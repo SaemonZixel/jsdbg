@@ -1,0 +1,2691 @@
+/* 
+ * JSDbg.js IDE
+ * 
+ * Version: 1.1
+ * License: MIT
+ * 
+ *  Copyright (c) 2020-2024 Saemon Zixel <saemonzixel@gmail.com>
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy of this software 
+ *  and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ */
+
+function jsdbg_ide_onclick(event, target) {
+	var ev = event || window.event;
+	typeof ev == 'string' ? ev = {type: ev, target: (typeof target == 'string'?document.querySelector(target):target)} : ev;
+	var trg1 = ev.target || document.body.parentNode;
+	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.body.parentNode; // #document
+	if (trg1.nodeType && trg1.nodeType == 3) trg1 = trg1.parentNode; // #text
+	var trg1p = (trg1.parentNode && trg1.parentNode.nodeType != 9) ? trg1.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
+	var trg1pp = (trg1p.parentNode && trg1p.parentNode.nodeType != 9) ? trg1p.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
+	
+	// удобная функция поиска близкого элемента по BEM
+	function find_near(class_name, if_not_found_return, start_node, prefix) {
+		// определим префикс блока
+		if(!prefix && (prefix = class_name.indexOf('!')+1) > 0) { 
+			var prefix1 = class_name.substring(0, prefix-1);
+			class_name = prefix1 + class_name.substring(prefix);
+		} else
+			var prefix1 = prefix || class_name.replace(/^([a-z]+-[^-]+).*$/, '$1');
+		var regexp = new RegExp(class_name+'( |$)','');
+		
+		// поищем среди соседей сначало
+		for(var i = 0, root = start_node || trg1; i < root.parentNode.childNodes.length; i++)
+			if((root.parentNode.childNodes[i].className||'').match(regexp))
+				return root.parentNode.childNodes[i];
+		
+		// найдём корневой node в блоке, заодно возможно встретим искомый элемент
+		for(; root.parentNode.className.indexOf(prefix1) > -1; root = root.parentNode)
+			if(root.parentNode.className.indexOf(class_name) > -1 && root.parentNode.className.match(regexp))
+				return root.parentNode;
+		
+		// перебираем всё, что ниже root
+		var nodes = root.getElementsByTagName('*');
+		for(var i=0; i<nodes.length; i++)
+			if(nodes[i].className && nodes[i].className.indexOf(class_name) > -1 && nodes[i].className.match(regexp)) 
+				return nodes[i];
+			
+		return if_not_found_return;
+	}
+
+	function code_editor(css_selector_or_node) {
+		var editor = typeof css_selector_or_node == 'string'
+			? document.querySelector(css_selector_or_node)
+			: css_selector_or_node;
+		if (!editor) alert('Not found '+css_selector_or_node);
+		if (window["ace"]) { 
+			editor = ace.edit(editor, {
+// 				fontFamily: "monospace",
+// 				fontSize: '12px',
+				behavioursEnabled: false,
+				enableBasicAutocompletion: true
+			});
+			editor.dataset = editor.container.dataset;
+			if(!editor.dataset.aceInitDone) {
+				editor.session.setMode("ace/mode/javascript");
+				editor.session.setOption("useSoftTabs", false);
+				editor.setOption("fontFamily", "monospace");
+				editor.setOption("fontSize", '12px');
+				editor.setBehavioursEnabled(false);
+				editor.enableBasicAutocompletion = true;
+				editor.setAutoScrollEditorIntoView(true);
+				editor.container.className += ' c-code_editor-textarea';
+				editor.dataset.aceInitDone = true;
+			}
+		}
+		else
+		editor = {
+			textarea: editor,
+			getValue: function(){
+				return this.textarea.value;
+			},
+			setValue: function(text) {
+				this.textarea.value = text;
+			},
+			dataset: editor.dataset,
+			getSelectedText: function() {
+				return this.textarea.selectionStart == this.textarea.selectionEnd
+					? this.textarea.value
+					: this.textarea.value.substring(this.textarea.selectionStart, this.textarea.selectionEnd);
+			}
+		}
+		return editor;
+	};
+	window.code_editor = code_editor;
+	
+	var break_point_diacritic = '&#860;&#865;';
+	
+	// cmd_code_editor_save
+	// TODO save constructor()
+	// TODO target not my
+	// TODO не сохраняет изменения в дебагере
+	if(ev.type == "click" && (trg1.className.indexOf('cmd_code_editor_save') > -1 || trg1p.className.indexOf('cmd_code_editor_save') > -1)) {
+ 		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var win = document.getElementById(win_id);
+		var editor = code_editor("#"+win_id+" .c-code_editor-textarea");
+		var new_code = editor.getValue();
+		var function_header = new_code.match(/^function ([_0-9a-zA-Z]+) *\(/);
+		var file_name = win.dataset.fileName || '';
+// 		file_name = file_name == "(new...)" ? "(no file)" : file_name;
+		var prototype_name = win.dataset.prototypeName;
+		var func_name = win.dataset.funcName;
+
+		// безымянная функция метода
+		if(!function_header && func_name) function_header = ['', func_name];
+
+		if (prototype_name == '' && func_name)
+			return alert('Error! prototype_name = "" and func_name = '+func_name);
+
+		// попытались создать быземянный метод
+		if (prototype_name && new_code.match(/^function *\(/)) {
+			return alert("Error! Method without name detected!");
+		}
+		
+		// не выбран никакой метод/класс -> просто сохраняем всё
+		if (!function_header || !function_header[1]) {
+			/* skip */
+		}
+
+		// конструктор или новый прототип?
+		else if (prototype_name == function_header[1]
+		|| prototype_name == ''
+		) {
+			prototype_name = function_header[1];
+			
+			// сохранять все старые методы прототипа
+			var old_class = window[function_header[1]];
+			var old_class_prototype = window[function_header[1]].prototype;
+			
+			// обновляем конструктор
+			eval('window.'+function_header[1]+' = '+new_code);
+
+			// восстанавливаем сохранённые методы
+			for(var f in old_class) 
+			if(f != 'prototype' && f in window[prototype_name].__proto__ == false)
+				window[prototype_name][f] = old_class[f];
+// 			for(var f in old_class_prototype)
+// 				window[prototype_name].prototype[f] = old_class_prototype[f];
+			window[prototype_name].prototype = old_class_prototype;
+		}
+			
+		// метод прототипа
+		else {
+			// static/prototype
+			var method_type =  document.getElementById(win_id+"_class_methods").className.match(/selected/) ? '.' : '.prototype.';
+		
+			func_name = function_header[1];	
+			eval(prototype_name+method_type+func_name+' = '+new_code+';');
+		}
+		
+		// сохранить в файл
+		jsdbg_ide_onclick({
+			type: "save_file", 
+			file_name: file_name, 
+// 			file_content: new_code, 
+			target: trg1});
+		
+		// обновим список методов
+		jsdbg_ide_onclick({
+			type: 'click', 
+			target: document.querySelector('#'+win_id + "_class_hierarchy option[data-prototype-name='" + prototype_name  +"']")
+		});
+		
+		return;
+		
+		
+		// сохранение в дебагере (если это не функция/метод/фрагмент)
+		if(win_id.match(/^jsdbg_debugger_/) && editor.dataset.prototypeName && editor.getAttribute("data-file_name-offset") == "0" && !editor.getAttribute("data-func-name")) {
+			
+			// проверим dbg_readonly_code режим
+			if (document.getElementById(win_id).className.indexOf("dbg_readonly_code") > -1) {
+				alert("Can't save changes because you edit old version of source code!");
+				return;
+			}
+			
+			jsdbg_ide_onclick({
+				type: "save_file", 
+				file_name: file_name, 
+				file_content: new_code, 
+				target: trg1});
+			
+			// делаем restart
+			jsdbg_ide_onclick({
+				type: "click", 
+				target: document.querySelector("#"+win_id+" .cmd_code_editor_restart")
+			});
+			
+			return;
+		}
+		
+		return;
+	}
+
+
+	// cmd_code_editor_set_breakpoint
+	if(trg1.className.indexOf('cmd_code_editor_set_breakpoint') > -1 || trg1p.className.indexOf('cmd_code_editor_set_breakpoint') > -1) {
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var editor1 = document.getElementById(win_id).querySelector('textarea.c-code_editor-textarea');
+		var select1 = document.getElementById('jsdbg_file_list_selector');
+		var file_name = editor1.getAttribute("data-file-name") || select1.value;
+		file_name = file_name == "(new...)" ? "(no file)" : file_name;
+		var file_name_offset = parseInt(editor1.getAttribute("data-file_name-offset")||"0");
+return;
+		// начнём список breakpoints для этого файла если небыло
+		if(file_name in littleLisp.breakpoints == false)
+			littleLisp.breakpoints[file_name] = {};
+		
+		// проверим на существующий breakpoint в месте курсора
+		var cursor_pos = editor1.selectionStart + file_name_offset;
+		for (var brk in	littleLisp.breakpoints[file_name]) {
+			var off = brk >> 16;
+			var len = brk & 32767;
+			
+			// если уже есть breakpoint в этом месте, то удалим и закончим на этом
+			if (cursor_pos >= off && (cursor_pos <= off+len)) {
+				delete littleLisp.breakpoints[file_name][brk];
+				
+				// включим подсветку breakpoints
+				editor1.selectionEnd = editor1.selectionStart;
+				html_onmouse({type:"mouseover", target:trg1});
+				
+				return;
+			}
+		}
+		
+		var atom_alphabet = 
+		"qwfpgjluyarstdhneiozxcvbkmQWFPGJLUYARSTDHNEIOZXCVBKM" + // Latin
+		"-+*/%<>=!|&" + // arithmetic + logic
+		":#'`" + // symbol chars + quote + backquote
+		"яжфпгйлуыюшщарстдхнеиоэзчцвбкмъьЯЖФПГЙЛУЫЮШЩАРСТДХНЕИОЭЗЧЦВБКМЬЪ" + // Cyrillic
+		"_.,?@~"+
+		"1234567890"; // additional atom chars
+		
+		// TODO String?
+		// вычеслим начало токена
+		for(var tok_start = editor1.selectionStart; tok_start >= 0; tok_start--)
+			if(atom_alphabet.indexOf(editor1.value[tok_start]) > -1) continue;
+			else { tok_start++; break; }
+			
+		// и конец токена
+		for(var tok_end = editor1.selectionStart; tok_end < editor1.value.length; tok_end++)
+			if(atom_alphabet.indexOf(editor1.value[tok_end]) > -1) continue;
+			else break;
+		
+		var token = (tok_start + file_name_offset << 16) + (tok_end-tok_start);
+		
+		// если breapoint уже такой есть, то уберём его
+		if (token in littleLisp.breakpoints[file_name])
+			delete littleLisp.breakpoints[file_name][token];
+		
+		// иначе на него всего и повесим breakpoint
+		else
+			littleLisp.breakpoints[file_name][token] = true;
+		
+		// включим подсветку breakpoints
+		editor1.selectionEnd = editor1.selectionStart;
+		html_onmouse({type:"mouseover", target:trg1});
+	}
+
+	// cmd_code_editor_inspect_it
+	if(trg1.className.indexOf('cmd_code_editor_inspect_it') > -1 || trg1p.className.indexOf('cmd_code_editor_inspect_it') > -1) {
+	
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var editor = code_editor("#"+win_id+" .c-code_editor-textarea");
+// 		var file_name = editor.getAttribute("data-file-name") || document.getElementById('jsdbg_file_list_selector').value;
+// 		file_name = file_name == "(new...)" ? "(no file)" : file_name;
+		
+		var src = editor.getSelectedText();
+		if (src == "") src = editor.getValue();
+		
+		try {
+				
+			// если в дебагере, то на основе текущего контекста создаём новый дебагер
+			if(win_id.match(/^jsdbg_debugger_/))
+				var debugger1 = jsdbg.debug(src, file_name, document.getElementById(win_id).debugger1.ctx);
+			
+			// иначе в глобальной области видимости
+			else 
+				var debugger1 = jsdbg.debug(src, file_name);
+			
+		} catch(ex) {
+			alert(ex+'\n'+ex.stack)
+			return;
+		}
+			
+		try {
+			debugger1.continue();
+			var result = debugger1.ctx.__t[0];
+			
+			// удалим дебагер из списка дебагеров
+// 			for (var i in jsdbg.debuggers)
+// 				if (jsdbg.debuggers[i] == debugger1)
+// 					delete jsdbg.debuggers[i];
+			
+		} catch(ex) {
+			if(ex != "Breakpoint!") {
+				alert(ex);
+				console.info(ex.stack);
+			}
+			
+			var button = document.createElement('BUTTON');
+			button.className = "cmd_code_editor_debugger";
+			button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
+			button.debugger1 = debugger1;
+			button.ex = ex;
+		
+			if(document.getElementById("jsdbg_ide_panel")) {
+				document.getElementById("jsdbg_ide_panel").insertBefore(button, document.getElementById("jsdbg_ide_panel").firstElementChild);
+			}
+			else {
+				button.className = "c-panel-btn cmd_code_editor_debugger";
+				find_near("c-toolbar").appendChild(button);
+			}
+		
+			button.click();
+		
+			return;
+		}
+
+// 				alert("RESULT: " + (result instanceof Function ? result : JSON.stringify(result)))
+// 				return;
+
+		// откроем инспектор объектов
+		jsdbg_ide_onclick({type: 'show_inspector', raw: result, ctx: debugger1.ctx});
+		
+		return;
+	}
+	
+	// cmd_code_editor_new_class
+	if(trg1.className.indexOf('cmd_code_editor_new_class') > -1 || trg1p.className.indexOf('cmd_code_editor_new_class') > -1) {
+		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var editor = code_editor('#'+win_id+" .c-code_editor-textarea");
+		editor.setValue("function NewClass(){\n\tthis.init();\n}");
+		
+		document.querySelector('#'+win_id).dataset.funcName = '';
+		document.querySelector('#'+win_id).dataset.prototypeName = '';
+	}
+	
+	// cmd_code_editor_new_method
+	if(trg1.className.indexOf('cmd_code_editor_new_method') > -1 || trg1p.className.indexOf('cmd_code_editor_new_method') > -1) {
+		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var editor = code_editor('#'+win_id+" .c-code_editor-textarea");
+		editor.setValue("function noname() {\n\t\n}");
+		
+		document.querySelector('#'+win_id).dataset.funcName = '';
+	}
+
+	// #jsdbg_file_list_selector
+	if(trg1.id == "jsdbg_file_list_selector") {
+		var editor = document.querySelector("#ide_main_window > .c-code_editor-textarea");
+		
+		if(trg1.value == '(new...)') {
+			var name = prompt('File name:', '');
+			if(!!name) {
+				jsdbg_ide_onclick({
+					type: "save_file", 
+					file_name: name, 
+					file_content: ";; "+name
+				});
+				(trg1.insertBefore(document.createElement('OPTION'), trg1.lastChild)).innerHTML = name;
+				trg1.selectedIndex = trg1.options.length - 2;
+				if (window["ace"]) { 
+					editor = ace.edit(editor);
+					editor.session.setValue(";; "+name);
+				}
+				else {
+					editor.value = ";; "+name;
+					editor.focus();
+				}
+			}
+		}
+		else {
+			jsdbg_ide_onclick({type: "get_file", file_name: trg1.value, onload: function(value) {
+				if (window["ace"]) { 
+					editor = ace.edit(editor);
+					editor.session.setValue(value);
+				}
+				else {
+					editor.value = value;
+				}
+			}});
+		}
+		
+		// запомним, что переключились на файл
+		var config = JSON.parse(localStorage.littlelisp_config || "{}");
+		config.last_file = trg1.options[trg1.selectedIndex].innerHTML;
+		localStorage.littlelisp_config = JSON.stringify(config);
+	}
+
+	// .cmd_code_editor_load_and_activate_ACE
+	if(ev.type == "click" && trg1.className.indexOf("cmd_code_editor_load_and_activate_ACE") > -1) {
+		var ace_basePath = "//cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/";
+		if(document.location.host.match(/(\.loc|\.localhost|test)$/)) ace_basePath = "/";
+		var ace_tag = document.getElementById("ace_js");
+		if (!ace_tag) {
+			ace_tag = document.createElement("SCRIPT");
+			ace_tag.id = "ace_js";
+			ace_tag.type = "text/javascript";
+			ace_tag.src = ace_basePath + "ace.js";
+			ace_tag.onload = function(){ 
+				console.log("Ace loaded!"); 
+				ace.config.set("basePath", ace_basePath);
+				var list = document.querySelectorAll('.c-code_editor-textarea');
+				for (var i=0; i<list.length; i++)
+					code_editor(list[i]);
+// 				var editor = ace.edit("jsdbg_class_browser_1_code_editor");
+// 				editor.session.setMode("ace/mode/javascript");
+// 				editor.session.setOption("useSoftTabs", false);
+// 				editor.setOption("fontFamily", "monospace");
+// 				editor.setBehavioursEnabled( true );
+			};
+			document.querySelector("head").insertBefore(ace_tag, document.querySelector("head > script"));
+		}
+	}
+	
+	// [restore_main_window_content]
+	if(ev.type == "restore_main_window_content" /* || ev.type == "load" && ev.target == document */) {
+
+		// если есть связь с сервером, но нет пароля, запросим тогда и авторизуемся
+		if (document.cookie.indexOf("littlelisp-save-url=") > -1 && document.cookie.indexOf("littlelisp-password") < 0) {
+			var password = prompt("Password:", "abc123");
+			if (password) {
+				var save_url = document.cookie.match(/littlelisp-save-url=([^;]+)/);
+				var xhr = new XMLHttpRequest();
+				xhr.open("POST", decodeURIComponent(save_url[1])+"?action=auth", true); 
+				xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+				xhr.onreadystatechange = function(){ 
+					if(xhr.readyState != 4 || xhr.responseText == "") return;
+					console.log(xhr.responseText);
+					
+					if(xhr.responseText != "ok") alert(xhr.responseText);
+					else document.cookie += "; littlelisp-password="+encodeURIComponent(password);
+						
+					jsdbg_ide_onclick({type: "restore_main_window_content"});
+				};
+				xhr.send("password="+encodeURIComponent(password));
+				
+				return;
+			}
+		}
+		
+		// считаем config
+		try {
+			var config = localStorage["littlelisp_config"];
+			config = JSON.parse(config);
+		}
+		catch(ex) {
+// 			alert(ex);
+			var config = undefined;
+		}
+
+		// если config повреждён или его нет, то создадим новый
+		if(!config) {
+			localStorage["littlelisp_config"] = "{\"last_file\":\"workspace1\"}";
+			config = {last_file: "workspace1"};
+			if("jsdbg_file_workspace1" in localStorage == false)
+				localStorage["jsdbg_file_workspace1"] = document.getElementById('ide_main_window_src').value;
+		}
+		
+		// загрузим список сохранёных файлов
+		jsdbg_ide_onclick({type: "list_files", selected_file: config.last_file});
+		
+		// загрузим в редактор последний редактированный файл
+		jsdbg_ide_onclick({type: "get_file", file_name: config.last_file, onload: function(value){
+			var last_file_content = value;
+			if(typeof last_file_content == "undefined")
+				document.getElementById('ide_main_window_src').value = "";
+			else
+				document.getElementById('ide_main_window_src').value = last_file_content;
+			document.getElementById('ide_main_window_src').focus();
+			
+		}});
+		
+	}
+		
+	// [init_css]
+	if(ev.type == 'init_css') {
+		var style_tag = document.getElementById("jsdbg-ide-js-css");
+		if(!style_tag) {
+			style_tag = document.createElement("STYLE");
+			style_tag.id = "jsdbg-ide-js-css";
+			style_tag.type = "text/css";
+			style_tag.appendChild(
+				document.createTextNode(jsdbg_ide_onclick.css_styles));
+			document.querySelector("head").insertBefore(style_tag, document.querySelector("head > style"));
+		}
+		
+		// стили окон тоже подключим
+		win_onmouse({type: 'init_win_css'});
+	}
+	
+	// [show_hide_jsdbg_ide]
+	if(ev.type == "show_hide_jsdbg_ide") 
+	{
+		// потключим стили оформления (если ещё нет)
+		jsdbg_ide_onclick({type: 'init_css'});
+		
+		// пикажем окно Class Browser
+		jsdbg_ide_onclick({type:'cmd_code_editor_show_class_browser'});
+		return;
+		
+		// build and show IDE interface
+		var ide_win = document.getElementById("ide_main_window");
+		if ( ! ide_win) {
+			var div = document.createElement("DIV");
+			div.innerHTML = '<div id="ide_main_window" class="c-code_editor" style="width:100%;height:100%;position:fixed;top:0;left:0;right:0;bottom:0;display:none;background:white">'+
+			'<pre id="ide_main_window_brkpnts" class="c-code_editor-bg" style="height:100%;width:100%;border-top:26px solid transparent;display:block;background:white;position:absolute;top:0;left:0;color:transparent;"></pre>'+
+		'<textarea id="ide_main_window_src" class="c-code_editor-textarea" contenteditable="true" data-win-id="ide_main_window" data-file_name-offset="0">'+(window['default_lisp_code']||"")+'</textarea>'+
+		'<div class="c-toolbar" style="position:absolute;top:0;width:100%;" data-win-id="ide_main_window">'+
+		'<select id="jsdbg_file_list_selector" class="c-toolbar-select" onchange="return jsdbg_ide_onclick(event)"></select>'+
+		'<button class="c-toolbar-btn cmd_code_editor_save" title="Save to LocalStorage (Alt+S)"><i class="ico-save"></i>Save</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_run" title="Execute selected fragment or all text (Alt+R)"><i class="ico-play"></i>RunIt</button>'+
+		'<button class="c-toolbar-btn cmd_code_editor_start_debug" title="Start debugging selected fragment or all text (Alt+W)"><i class="ico-bug"></i>DebugIt</button>'+
+		'<button class="c-toolbar-btn cmd_code_editor_inspect_it" title="Evalute selected fragment or all text and explore result (Alt+A,Ctrl+I)"><i class="ico-eye"></i>ExploreIt</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_set_breakpoint" title="Set/unset breakpoint (Alt+T)"><i class="ico-add-brk"></i>Set breakpoint</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_show_class_browser"  title="Open Class Browser"><i class="ico-class-browser"></i>Class Browser</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_load_and_activate_ACE"  title="Load and activate ACE.js" style="display:none">Activate highlight</button>'+
+		'<button class="c-toolbar-btn" id="ide_main_window_settings" title="Settings" style="display:none"><i class="ico-cog"></i></button>'+
+		'<span class="c-toolbar-divider"  style="display:none"></span></div></div>';
+		
+			document.body.appendChild(div.firstElementChild);
+			ide_win = document.getElementById("ide_main_window");
+			ide_win.style.display = "block";
+		
+			jsdbg_ide_onclick({type: "restore_main_window_content"});
+			
+			// скроем кнопку показа IDE
+			(document.getElementById("jsdbg_ide_main_window_show")||{}).innerHTML = "Hide IDE";
+		}
+		else {
+			
+			if(ide_win.style.display == "block") {
+				// сохроним прокрутку в редакторе
+				if (document.getElementById("ide_main_window_src")) {
+					document.getElementById("ide_main_window_src").setAttribute("data-scrollTop", document.getElementById("ide_main_window_src").scrollTop);
+				}
+				
+				ide_win.style.display = "none";
+				(document.getElementById("jsdbg_ide_main_window_show")||{}).innerHTML = "Show IDE";
+			}
+			else {
+				ide_win.style.display = "block";
+				(document.getElementById("jsdbg_ide_main_window_show")||{}).innerHTML = "Hide IDE";
+				
+				// востановим прокрутку в редакторе
+				document.getElementById("ide_main_window_src").scrollTop = parseInt(document.getElementById("ide_main_window_src").getAttribute("data-scrollTop"));
+			}
+		}
+	}
+	
+	// [hide_littlelisp_js_ide]
+	if(ev.type == "hide_littlelisp_js_ide" || (ev.type == "click" && trg1.id == "jsdbg_ide_main_window_show_hide")) {
+		var ide_win = document.getElementById("ide_main_window");
+		if (ide_win) ide_win.style.display = "none";
+		
+		// покажем кнопку
+		(document.getElementById("jsdbg_ide_main_window_show")||{}).innerHTML = "Show IDE";
+	}
+
+	// [list_files]
+	if(ev.type == "list_files") {
+		
+		// создадим select
+		var select1 = document.getElementById("jsdbg_file_list_selector");
+		if (!select1) {
+			var select1 = document.createElement('SELECT');
+			select1.id = 'jsdbg_file_list_selector';
+			select1.style.display = 'none';
+			document.body.appendChild(select1);
+		}
+		
+		var prototype_to_file_map = {};
+
+		// возмём карту соответствий prototype=file
+		var files = localStorage.getItem('jsdbg_ide_prototype_to_file_map');
+		if(files)
+		try {
+			prototype_to_file_map = JSON.parse(files);
+		}
+		catch(ex) {
+			console.error(ex);
+			alert(ex.stack||ex);
+		}
+		
+		// собираем список file=prototype по тегам script
+		var scrpit_nodes = document.getElementsByTagName('SCRIPT');
+		for(var i=0; i<scrpit_nodes.length; i++) 
+		if(scrpit_nodes[i].dataset.classes || scrpit_nodes[i].dataset.prototypes) 
+		{
+			var list = (scrpit_nodes[i].dataset.classes || scrpit_nodes[i].dataset.prototypes).split(',');
+			while(list.length) {
+				prototype_to_file_map[list[0]] = scrpit_nodes[i].src.replace(/https?:\/\/[^/]+/, '');
+				list.shift();
+			}
+		}
+
+		return prototype_to_file_map;
+		
+		/*
+		for(var f in localStorage) if(f.match(/^jsdbg_file_/)) {
+			(select1.appendChild(document.createElement('OPTION'))).innerHTML = f.replace(/^jsdbg_file_/, '');
+			
+			if (f == "jsdbg_file_"+ev.selected_file)
+				select1.lastElementChild.selected = true;
+		}
+		(select1.appendChild(document.createElement('OPTION'))).innerHTML = '(new...)';
+
+		// запросим с сервера список файлов, если есть возможность
+		if (document.cookie.indexOf("littlelisp-save-url=") > -1) {
+			var save_url = document.cookie.match(/littlelisp-save-url=([^;]+)/);
+			var xhr = new XMLHttpRequest();
+			xhr.open("GET", decodeURIComponent(save_url[1])+"?action=list", true); 
+			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+// 			xhr.setRequestHeader("Origin", document.location.host);
+			xhr.onreadystatechange = function(){ 
+				if(xhr.readyState != 4 || xhr.responseText == '') return;
+// 				console.log(xhr.responseText);
+				if (xhr.responseText.match(/^Error!/)) 
+					return alert(xhr.responseText);
+				
+				// удалим (new...)
+				select1.removeChild(select1.lastChild);
+				
+				var list = xhr.responseText.split("\n");
+				for (var i in list) if(list[i].match(/\.lisp$/)) {
+					select1.appendChild(document.createElement('OPTION')).innerHTML = list[i];
+					if (list[i] == ev.selected_file)
+						select1.lastElementChild.selected = true;
+				}
+				(select1.appendChild(document.createElement('OPTION'))).innerHTML = '(new...)';
+			};
+			xhr.send("");
+		}*/
+		
+		return;
+	}
+	
+	// [save_file]
+	if(ev.type == "save_file")
+	{
+		// дадим знать, что идёт сохранение
+		var trg = trg1p.className.indexOf('cmd_code_editor_save') > -1 ? trg1p : trg1;
+		trg.style.opacity = 0.4;
+		setTimeout(function(){ trg.style.opacity = null; }, 500);
+		
+		// содержимое файла
+		var file_content = [];
+
+		// ищем все прототипы/классы для этого файла
+		var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
+		for (var clazz_name in prototype_to_file_map)
+		if (prototype_to_file_map[clazz_name] == ev.file_name) try {
+
+			var clazz = window[clazz_name];
+			if (!clazz) continue;
+			
+			// конструктор
+			if (clazz.toString().match(/function *\(/))
+				file_content.push("if(!window['"+clazz_name+"']) var "+clazz_name+" = "+clazz.toString()+';');
+			else
+				file_content.push("if(!window['"+clazz_name+"']) "+clazz.toString()+';');
+			
+			// методы прототипа (static)
+			for(var f in clazz) if(f in clazz.__proto__ == false && f != 'prototype') {
+				if (typeof clazz[f] == 'function')
+					file_content.push(clazz_name+'.'+f+' = '+clazz[f].toString()+';');
+				else
+					file_content.push(clazz_name+'.'+f+' = '+(typeof clazz[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz[f]))+';');
+			}
+			
+			// методы объекта
+			for(var f in clazz.prototype) if(f in clazz.prototype.__proto__ == false) {
+				if (typeof clazz.prototype[f] == 'function')
+					file_content.push(clazz_name+'.prototype.'+f+' = '+clazz.prototype[f].toString()+';');
+				else
+					file_content.push(clazz_name+'.prototype.'+f+' = '+(typeof clazz.prototype[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz.prototype[f]))+';');
+			}
+
+			// если есть метод инициализации класса/прототипа, то его надо будет запустить
+			if(clazz.init) {
+				file_content.push(clazz_name+'.init();');
+			}
+			
+		}
+		catch(ex) {
+			console.log(ex.stack);
+			alert(ex+'\n'+ex.stack)
+			return;
+		}
+			
+// 		console.log(file_content);
+// 			alert(file_content.join('\n\n'));
+
+		var xhr = new XMLHttpRequest();
+		xhr.open('POST', (jsdbg_ide_onclick.ftp_helper_url || '/ftp-helper.php')+'?STOR=/'+ev.file_name);
+		xhr.onreadystatechange = function(event){
+			if(xhr.readyState != 4) return;
+			alert(xhr.responseText);
+		};
+		xhr.send(file_content.join('\n\n'));
+
+		return;
+
+		/*
+		if (!ev.file_content) {
+			alert("New content is empty! (canceled saving)");
+			debugger;
+			return;
+		}
+		
+		// сохраним на сервер
+		if (ev.file_name.match(/\.lisp$/)) {
+			if (document.cookie.indexOf("littlelisp-save-url=") < 0) 
+				return alert("Can't save file to server! (not found littlelisp-save-url cookie)");
+			
+			try {
+				var file_content_parsed = littleLisp.parse(ev.file_content);
+			} 
+			catch(ex) {
+				alert(ex+'\n'+ex.stack)
+				return;
+			}
+			
+			var save_url = document.cookie.match(/littlelisp-save-url=([^;]+)/);
+			var data = ["lisp=",
+				encodeURIComponent(ev.file_content),
+				"&lisp_js=littleLisp.interpret(",
+				encodeURIComponent(JSON.stringify(file_content_parsed)),
+				"%2C%20window%7C%7Cglobal%2C%20",
+				encodeURIComponent(JSON.stringify(ev.file_content)),
+				"%2C%20",
+				encodeURIComponent(JSON.stringify(ev.file_name)),
+				")%3B"
+			];
+			var xhr = new XMLHttpRequest();
+			xhr.open("POST", decodeURIComponent(save_url[1])+"?action=save&file="+encodeURIComponent(ev.file_name), true); 
+			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+// 			xhr.setRequestHeader("Origin", document.location.host);
+			xhr.onreadystatechange = function(){ 
+				if(xhr.readyState != 4 || xhr.responseText == '') return;
+				console.log(xhr.responseText);
+				if (!xhr.responseText.match(/^ok/)) alert(xhr.responseText);
+			};
+			xhr.send(data.join(''));
+		}
+		
+		// либо сохраним в броузере
+		else
+			localStorage.setItem("jsdbg_file_"+ev.file_name, ev.file_content);
+		
+		// также обновим контент в главном окне если открыто
+		if (document.getElementById('jsdbg_file_list_selector').value == ev.file_name) {
+			var editor1 = document.getElementById("ide_main_window").querySelector(".c-code_editor-textarea");
+			if (editor1.value != ev.file_content)
+				editor1.value = ev.file_content;
+		}*/
+	}
+	
+	// [get_file]
+	if(ev.type == "get_file") {
+		if (ev.file_name.match(/\.lisp$/)) {
+			if (document.cookie.indexOf("littlelisp-save-url=") < 0) 
+				return alert("Can't get "+ev.file_name+" from server! (not found littlelisp-save-url cookie)");
+			
+			var onload_callback = ev.onload;
+			var save_url = document.cookie.match(/littlelisp-save-url=([^;]+)/);
+			var xhr = new XMLHttpRequest();
+			xhr.open("GET", decodeURIComponent(save_url[1])+"?action=get&file="+encodeURIComponent(ev.file_name), true); 
+			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+// 			xhr.setRequestHeader("Origin", document.location.host);
+			xhr.onreadystatechange = function(){ 
+				if(xhr.readyState != 4 || xhr.responseText == '') return;
+// 				console.log(xhr.responseText);
+				onload_callback(xhr.responseText);
+			};
+			xhr.send("");
+		} 
+		else
+			ev.onload(localStorage.getItem('jsdbg_file_'+ev.file_name));
+	}
+	
+	// .c-object_props
+	jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near);
+	
+	// .jsdbg-class-browser
+	jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor);
+	
+	// .jsdbg-ide-debugger
+	jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor);
+}
+
+jsdbg_ide_onclick.debugger_win_next_num = 1;
+
+document.documentElement.addEventListener("click", jsdbg_ide_onclick);
+document.documentElement.addEventListener("input", jsdbg_ide_onclick);
+
+document.addEventListener("DOMContentLoaded", function(event) {
+	if(document.readyState != 'complete') return;
+	jsdbg_ide_onclick({type: 'DOMContentLoaded', target: document});
+});
+
+function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
+	
+	// [show_inspector]
+	if(ev.type == 'show_inspector') 
+	{
+		var result = ev.raw;
+		
+		for(var id = 1;;id++)
+			if(document.getElementById("jsdbg_ide_inspector_"+id)) continue;
+			else break;
+		
+		var div = document.createElement("DIV");
+		div.className = "win jsdbg-ide-inspector";
+		div.id = 'jsdbg_inspector_'+id;
+		div.dataset.winSettingsLocalStorage = 'jsdbg_inspector_'+id;
+		div.style.width = '460px';
+		div.style.height = '570px';
+		div.innerHTML = '<div id="jsdbg_inspector_'+id+'_title" class="win-header-title">Inspect '+{}.toString.call(result)+'</div> <a class="win-close-btn" href="javascript:void(0)">x</a></div>'+
+		
+		'<div id="jsdbg_inspector_'+id+'_raw" class="win-area">'+
+		'<textarea class="c-textarea" style="width:100%;height:100%;max-width:100%;box-sizing:border-box;border:0px;" data-win-id="jsdbg_inspector_'+id+'"></textarea>'+
+		'</div>'+
+		
+		'<div id="jsdbg_inspector_'+id+'_splitter" class="win-splitter type_horizontal"></div>'+
+		
+		'<div id="jsdbg_inspector_'+id+'_watch" class="win-area">'+
+		'<div class="c-object_props" style="width:100%;height:100%;outl1ine:1px solid silver;" data-win-id="jsdbg_inspector_'+id+'"></div>'+
+		'</div>'+
+		'<div class="win-resizer"></div>';
+		document.body.appendChild(div);
+		
+		//win_onmouse(win);
+		
+		// RAW значение
+		try {
+			document.querySelector("#jsdbg_inspector_"+id+"_raw > textarea").value = (result !== undefined ? result.toString() : "undefined");
+		} catch(ex) {
+			document.querySelector("#jsdbg_inspector_"+id+"_raw > textarea").value = ({}.toString).apply(result);
+		}
+		
+		// загрузим контекст в watch
+		jsdbg_ide_onclick({
+			type: 'load', 
+			target: document.getElementById("jsdbg_inspector_"+id+'_watch').firstElementChild,
+// 					show_toolbar: true,
+			object_to_load: result,
+			onchange: function(event, state) { return jsdbg_ide_onclick({type:'onchange', target: this.parentNode.firstElementChild, state: state}); }
+		});
+	}
+	
+	// [change] .c-object_props
+	if(ev.type == 'change' && trg1.className.indexOf('c-object_props') > -1) {
+// 		var dbg_id = find_near("c-object_props", {getAttribute:function(){}}).getAttribute("data-win-id");
+// 		var debugger1 = document.getElementById(dbg_id).debugger1;
+// 		debugger1.ctx[ev.key] = JSON.parse(ev.value);
+	
+		ev.object[ev.key] = eval("("+ev.value+")");
+// 		debugger;
+	}
+	
+	// c-object_props
+	if(trg1.className.indexOf('c-object_props') > -1 || trg1p.className.indexOf('c-object_props') > -1) {
+		// откорректируем trg1 (иконка в кнопке например)
+		trg1 = trg1.className.indexOf('c-object_props') > -1 ? trg1 : trg1p;
+		
+		// CSS внедрим стили виджита если нет
+		if(ev.type == 'load') {
+			var style_tag = document.getElementById("c_object_props_css");
+			if(!style_tag) {
+				style_tag = document.createElement("STYLE");
+				style_tag.id = "c_object_props_css";
+				style_tag.type="text/css";
+				style_tag.appendChild(document.createTextNode(
+				".c-object_props { position: relative; }"+
+				".c-object_props-cols { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; display: inline-block; vertical-align: top; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; border-top: 32px solid #fff; position: relative; border-bottom: 1px solid silver; }"+
+				".c-object_props-cols.mode_without_toolbar { border-top: none; }"+
+				/* .c-object_props-col1 { width: 20%; min-height: 100%; display: inline-block; border: 1px solid silver; vertical-align: top; background: #EEE; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; } */
+				".c-object_props-col1 { position: absolute; left: 0px; top: 0px; width: 20%; min-height: 100%; display: block; border: 1px solid silver; vertical-align: top; background: #EEE; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; }"+
+				/* .c-object_props-col2 { width: 79.9%; min-height: 100%; display: inline-block; border: 1px solid silver; border-left: none; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; } */
+				".c-object_props-col2 { position: absolute; left: 20%; top: 0px; right: 0px; min-height: 100%; display: block; border: 1px solid silver; border-left: none; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; }"+
+				".c-object_props-key, .c-object_props-value { border-bottom: 1px solid silver; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; padding: 1px 3px; cursor: default; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }"+
+				".c-object_props-value:empty { min-height: 1.4em }"+
+				".c-object_props-value { white-space: nowrap; overflow: hidden; cursor: text; }"+
+				".c-object_props-key.state_active { background: silver; }"+
+				".c-object_props-key.mod_error, .c-object_props-value.mod_error { background-color: #f2dede }"+
+				".c-object_props-editor { display: none; position: absolute; width: 79.9%; height: 100%; left: 20%; top: 0; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; border-top: 32px solid white; }"+
+				".c-object_props-cols.mode_without_toolbar + .c-object_props-editor { border-top: 0; }"+
+				".c-object_props-editor-textarea { height: 100%; width: 100%; max-width: 100%; max-height: 100%; border: 1px solid silver; border-left: 0px solid silver; background: white; margin: 0; border-radius: 0px; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; overflow-y: scroll; }"+
+				".c-object_props.mod_one_prop > .c-object_props-editor { display: block; }"+
+				".c-object_props.mod_one_prop > .c-object_props-cols { width: 20%; }"+
+				".c-object_props.mod_one_prop > .c-object_props-cols > .c-object_props-col1 { width: 100%; }"+
+				".c-object_props.mod_one_prop > .c-object_props-cols > .c-object_props-col2 { display: none; }"+
+				".c-object_props-toolbar { position: absolute; top: 0; left: 0; right: 1px; border: 1px solid #ddd; }"+
+				".c-object_props-toolbar-btn { display: inline-block; vertical-align: top; height: 22px; margin: 1px; border: none; background: transparent; }"+
+				".c-object_props-toolbar-btn:hover { background: silver; }"+
+				".c-object_props-toolbar-btn > i { background: transparent no-repeat 50% 50%; display: inline-block; width: 20px; height: 20px; vertical-align: bottom; }"+
+				".c-object_props-toolbar-divider { width: 1px; margin: 1px 1px; overflow: hidden; background-color: #e5e5e5; height: 20px; display: inline-block; vertical-align: middle; }"+
+				".c-object_props-editor-btns { position: absolute; right: 2px; bottom: 2px; }"+
+				".c-object_props-editor-btn { display: inline-block; }"+
+				".c-object_props-btn_back { width: 100%; height: 100%; text-align: left; border-bottom: 1px solid silver; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; padding: 1px 3px; cursor: default; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; user-select: none; -webkit-user-select: none; -moz-user-select: none; }"+
+				".c-object_props-link { color: -webkit-text; }"));
+				document.querySelector("head").insertBefore(style_tag, document.querySelector("head > style"));
+			}
+		}
+		
+		// [load]
+		if(ev.type == 'load') {
+			var root = find_near('c-object_props');
+			
+			// создадим историю состояний если нет
+			if('states' in root == false) {
+				root.states = [];
+			}
+			
+			// ...иначе обновим в ней текущее стостояние
+			else {
+				root.states[0].scrollTop = find_near('c-object_props-cols').scrollTop;
+				for(var curr = find_near('c-object_props-col1').firstElementChild; curr; curr = curr.nextElementSibling)
+					if(curr.className.indexOf('state_active') > -1) {
+						root.states[0].selected_key = curr.innerHTML;
+						break;
+					}
+			}
+			
+			// загрузим уже существующее состояние
+			if("state_to_load" in ev) {
+				var obj = ev.state_to_load.object;
+			} 
+			
+			// загрузим новое состояние и новый объект в историю
+			else { 
+				if("key_to_load" in ev)
+					var obj = root.states[0].object[ev.key_to_load];
+				else {
+					var obj = ev.object_to_load;
+					root.states = [];
+				}
+				
+				root.states.unshift({
+					object: obj, 
+					selected_key: undefined, 
+					scrollTop: 0});
+				
+				delete root.previous_states; // удалим состояния для кнопки "Next"
+			}
+
+			var col1_html = [], col2_html = [], row_class = '';
+			
+			// кнопка назад и путь
+			if(root.states.length > 1) {
+				var path = [];
+				
+				var root_obj = root.states[root.states.length-1].object;
+				path.push('<a class="c-object_props-link cmd_object_props_prev_state" href="javascript:void('+(root.states.length-2)+')" data-state-num="'+(root.states.length-2)+'">' + (root_obj.toString().indexOf("[object ") === 0 ? root_obj.toString() : ({}).toString.apply(root_obj)) + '</a>');
+				
+				for(var i = root.states.length-1; i > 0; i--) {
+					var num = i - 2;
+					path.push('.<a class="c-object_props-link cmd_object_props_prev_state" href="javascript:void('+num+')" data-state-num="'+num+'">' + root.states[i].selected_key + '</a>');
+				}
+			
+				col1_html.push('<div class="c-object_props-btn_back">&larr;..&nbsp;</div>');
+				col2_html.push('<div class="c-object_props-value">'+path.join("")+'</div>');
+			}
+			
+			// пригодится для вывода содежимого объектов
+			function json_enc(obj, max_deep) {
+				switch(typeof obj) {
+					case "object":
+						if(obj == null) return "null";
+						
+						if((max_deep == undefined ? 1 : max_deep) < 1) 
+							return ({}).toString.apply(obj);
+						
+						var json = [];
+						if(obj instanceof Array) {
+							for(var i = 0; i < obj.length; i++)
+								json.push(json_enc(obj[i], max_deep-1));
+							return '['+json.join(',')+']';
+						}
+						for(var fname in obj) {
+							json.push(fname+": "+json_enc(obj[fname], max_deep-1));
+							if (json.length > 15) return JSON.stringify(obj);
+						}
+						return "{"+json.join(', ')+"}";
+					case "number":
+						return obj.toString();
+					case "boolean":
+						return obj ? "true" : "false";
+					case "undefined":
+						return "undefined";
+					default:
+						return '"'+String(obj)+'"';
+				}
+			}
+			
+			// сгенерируем HTML со содержимым объекта
+			var selected_key = ('state_to_load' in ev) ? ev.state_to_load.selected_key : '';
+			for(var f in obj)
+			if(col1_html.length > (root.getAttribute("data-rows-limit")||100)) {
+				col1_html.push('<div class="c-object_props-key">&nbsp;</div>');
+				col2_html.push('<div class="c-object_props-value">Limit '+(root.getAttribute("data-rows-limit")||100)+' rows excedded!...</div>');
+				break;
+			}
+			else {
+				row_class = '';
+				
+				switch(typeof obj[f]) {
+					case "undefined":
+						col2_html.push('<div class="c-object_props-value type_undefined" data-key="'+f+'" title="'+(({}).toString.call(obj[f]))+'">&nbsp;</div>');
+						break;
+					case "string":
+						col2_html.push('<div class="c-object_props-value type_string" data-key="'+f+'" title="'+(({}).toString.call(obj[f]))+'">'+obj[f].replace(/</g, '&lt;').replace(/^ $/, "&nbsp;")+'&nbsp;</div>');
+						break;
+					case "function":
+						col2_html.push('<div class="c-object_props-value type_func_src" data-key="'+f+'" title="'+(({}).toString.call(obj[f]))+'">'+obj[f].toString().replace(/</g, '&lt;')+'</div>');
+						break;
+					default:
+						try {
+							col2_html.push('<div class="c-object_props-value" data-key="'+f+'" title="'+(({}).toString.call(obj[f]))+'">' +
+							json_enc(obj[f],1).replace(/</g, '&lt;') + '</div>');
+						} catch(ex) {
+							col2_html.push('<div class="c-object_props-value" data-key="'+f+'" title="!!! Error: '+ex.message+' !!!">'+(({}).toString.call(obj[f]))+'</div>');
+							row_class = ' mod_error';
+						}
+				}
+				
+				col1_html.push('<div class="c-object_props-key '+(/*selected_key==f?'state_active':*/'')+row_class+'">'+f+'</div>');
+			}
+			
+			var html = ['<div class="c-object_props-cols '+(ev.show_toolbar?'':'mode_without_toolbar')+'"><div class="c-object_props-col1">',
+				col1_html.join('\n'),
+				'</div><div class="c-object_props-col2">',
+				col2_html.join('\n'),
+				'</div></div>',
+				'<div class="c-object_props-editor"><textarea class="c-object_props-editor-textarea" onkeyup="console.log(event); if(event.keyCode == 27) jsdbg_ide_onclick({type:\'click\',target:this.parentNode.querySelector(\'.cmd_object_props_discard_changes\')})"></textarea><div class="c-object_props-editor-btns"><button type="button" class="c-object_props-editor-btn cmd_object_props_apply_changes">Apply</button><button type="button" class="c-object_props-editor-btn cmd_object_props_discard_changes">Cancel</button></div></div>'];
+			
+			/* if(ev.show_toolbar)
+				html.push('<div class="c-object_props-toolbar">'+
+				'<button class="c-object_props-toolbar-btn cmd_object_props_prev_state"><i class="ico-prev"></i></button>'+
+				'<button class="c-object_props-toolbar-btn cmd_object_props_next_state"><i class="ico-next"></i></button>'+
+				'<span class="c-object_props-toolbar-divider"></span>'+
+				'<button class="c-object_props-toolbar-btn cmd_object_props_apply_changes"><i class="ico-apply"></i>Apply</button>'+
+				'<button class="c-object_props-toolbar-btn cmd_object_props_discard_changes"><i class="ico-discard"></i>Discard</button>'+
+				'</div>'
+				); */
+			
+			root.innerHTML = html.join('');
+			
+			// прокрутим список как раньше было
+			if('state_to_load' in ev) {
+				find_near('c-object_props-cols').scrollTop = ev.state_to_load.scrollTop || 0;
+			} 
+			
+			// уберём редактор
+			root.className = root.className.replace(/ *mod_one_prop/, '');
+			
+			// повесим обработчик 2ного клика
+			root.ondblclick = jsdbg_ide_onclick;
+			
+			// onchange
+			root.onchange = ev.onchange;
+		}
+		
+		// [dblclick] .c-object_props-key/-value
+		if(ev.type == 'dblclick' && trg1.className.match(/c-object_props-key|c-object_props-value/)) {
+			var root = find_near('c-object_props');
+			
+			// не трогаем пустые строки (limit...)
+			if(trg1.innerHTML.match(/^(&nbsp;| *)$/)) return;
+			
+			// сохраним название поля в которое опускаемся
+			root.states[0].selected_key = trg1.innerHTML;
+			
+			jsdbg_ide_onclick({
+				type: "load", 
+				target: root, 
+				show_toolbar: find_near("c-object_props-toolbar"),
+				key_to_load: trg1.innerHTML});
+		}
+		
+		// [click] .c-object_props-value
+		if(ev.type == 'click' && trg1.className.match(/c-object_props-value/)) {
+			
+			// если выделили мышкой текст
+			if(window.getSelection().toString() != "")
+				return;
+			
+			// если кликнули по c-object_props-value то переключимся на соответствующий c-object_props-key
+			if(trg1.className.indexOf("c-object_props-value") > -1) {
+				for(var pos = 0; trg1.previousElementSibling; pos++)
+					trg1 = trg1.previousElementSibling;
+				trg1 = trg1.parentNode.previousElementSibling.firstElementChild;
+				for(;pos > 0 && trg1.nextElementSibling; pos--) 
+					trg1 = trg1.nextElementSibling;
+			}
+			
+			for(var curr = trg1.parentNode.firstElementChild; curr; curr = curr.nextElementSibling) {
+				if(curr.className.indexOf(' state_active') > -1) {
+					// уберём активность
+					curr.className = curr.className.replace(/ *state_active/, '');
+					
+					// если кликнули на активный элемент, уберём редактор и вернёмся в режим списка
+					if(curr == trg1) {
+						var root = find_near('c-object_props', {previous_states:[], current_state:0});
+						root.className = root.className.replace(/ *mod_one_prop/, '');
+						continue;
+					}
+				}
+
+				if(curr == trg1) {
+					curr.className += ' state_active';
+					
+					// загрузим текущее значение в редактор
+					var editor = find_near('c-object_props-editor-textarea');
+					var root = trg1.parentNode.parentNode.parentNode;
+					var state = root.states[0];
+					var obj = state.object;
+					
+					state.selected_key = curr.innerHTML;
+					
+					// загрузим на редактирование в зависимости от типа
+					editor.className = editor.className.replace(/ *type_[-a-z0-9_]+/, '');
+					switch(typeof obj[curr.innerHTML]) {
+						case 'undefined':
+							editor.value = 'undefined';
+							editor.className += ' type_undefined';
+							break;
+						case 'string':
+							editor.value = JSON.stringify(obj[curr.innerHTML]);
+							editor.className += ' type_string';
+							break;
+						case 'function':
+							editor.value = obj[curr.innerHTML].toString();
+							editor.className += ' type_func_src';
+							break;
+						case 'boolean':
+							editor.value = JSON.stringify(obj[curr.innerHTML]);
+							editor.className += ' type_boolean';
+							break;
+						case 'object':
+							if(obj[curr.innerHTML] === null) {
+								editor.value = JSON.stringify(obj[curr.innerHTML]);
+								editor.className += ' type_null';
+								break;
+							}
+							if('length' in obj[curr.innerHTML]) {
+								editor.value = JSON.stringify(obj[curr.innerHTML]);
+								editor.className += ' type_array';
+								break;
+							}
+						default:
+							editor.value = JSON.stringify(obj[curr.innerHTML]);
+							editor.className += ' type_'+(typeof obj[curr.innerHTML]);
+					}
+					
+					// покажем редактор
+					root.className = root.className.replace(/ *mod_one_prop/, '') + ' mod_one_prop';
+					
+					// поставим фокус в него
+					editor.focus();
+				}
+			}
+			
+		}
+		
+		// [click] .cmd_object_props_prev_state
+		// [dblclick] .c-object_props-btn_back
+		if(ev.type == 'click' && trg1.className.indexOf('cmd_object_props_prev_state') > -1
+		|| (ev.type == 'dblclick' && trg1.className.indexOf('c-object_props-btn_back') > -1)) {
+			var root = find_near('c-object_props');
+			
+			// история состояний пуста
+			if((root.states||[]).length == 0) return;
+			
+			// более предыдущего состояния нет
+			if(!root.states[1]) return;
+			
+			// переключимся на запрошенное состояние по порядковому номеру
+			for(var num = trg1.getAttribute("data-state-num") || 0; 
+				num >= 0; num--) {
+				
+				// перенесём текущее состояние вы специальный список для кнопки "Next"
+				if('previous_states' in root == false) 
+					root.previous_states = [];
+				root.previous_states.unshift(root.states.shift());
+				
+				if(num == 0)
+					jsdbg_ide_onclick({type: 'load', target: root, state_to_load: root.states[0]});
+			}
+		}
+		
+		// [click] .cmd_object_props_next_state
+		if(ev.type == 'click' && trg1.className.indexOf('cmd_object_props_next_state') > -1) {
+			var root = find_near('c-object_props');
+			
+			if('previous_states' in root == false) return;
+			if( ! root.previous_states[0]) return;
+			
+			jsdbg_ide_onclick({type: 'load', target: root, state_to_load: root.previous_states[0]});
+			
+			// перенесём в стек текущих состояний загруженное состояние
+			root.states.unshift(root.previous_states.shift());
+		}
+		
+		// [click] .cmd_object_props_apply_changes
+		if(ev.type == 'click' && trg1.className.indexOf('cmd_object_props_apply_changes') > -1) {
+			var root = find_near('c-object_props');
+			
+			if(root.className.indexOf('mod_one_prop') < 0) return;
+			
+			// так-же надо будет подправить значение в списке
+			var list_item = {};
+			for(var curr = find_near('c-object_props-col2').firstElementChild; curr; curr = curr.nextElementSibling)
+				if(curr.getAttribute('data-key') == root.states[0].selected_key) {
+					list_item = curr;
+					break;
+				}
+			
+			// запомним старое значение
+			var old_value = root.states[0].object[root.states[0].selected_key];
+			
+			// оповестим об изменении значения в поле
+			var editor = find_near('c-object_props-editor-textarea');
+			jsdbg_ide_onclick({
+				type:'change', 
+				target: root,
+				editor: editor,
+				object: root.states[0].object,
+				key: root.states[0].selected_key, 
+				value: editor.value, 
+				value_type: editor.className.match(/type_[a-z_A-Z0-9]+/)[0],
+				value_old: old_value});
+
+			// отобразим новое значение
+			switch(editor.className.match(/type_[a-z_A-Z0-9]+/)[0]) {
+				case 'type_string':
+// 					root.states[0].object[root.states[0].selected_key] = editor.value;
+					list_item.innerHTML = eval("("+editor.value+")");
+					break;
+				case 'type_undefined':
+					if(editor.value == 'undefined') {
+// 						root.states[0].object[root.states[0].selected_key] = undefined;
+						list_item.innerHTML = editor.value;
+						break;
+					}
+				case 'type_func_src':
+				default:
+// 					root.states[0].object[root.states[0].selected_key] = eval('('+editor.value+')');
+					list_item.innerHTML = editor.value;
+					break;
+			}
+			
+			// скроем редактор
+			root.className = root.className.replace(/ *mod_one_prop/, "");
+			
+			// уберём state_active
+			var list_item = root.querySelector(".c-object_props-key.state_active")||{className:""};
+			list_item.className = list_item.className.replace(/ *state_active/," ");
+			root.states[0].selected_key = undefined;
+		}
+		
+		// [click] .cmd_object_props_discard_changes
+		if(ev.type == 'click' && trg1.className.indexOf('cmd_object_props_discard_changes') > -1) {
+			var root = find_near('c-object_props');
+			
+			if(root.className.indexOf('mod_one_prop') < 0) return;
+			root.className = root.className.replace(/ *mod_one_prop/, "");
+			
+			// уберём state_active
+			var list_item = root.querySelector(".c-object_props-key.state_active")||{className:""};
+			list_item.className = list_item.className.replace(/ *state_active/," ");
+			root.states[0].selected_key = undefined;
+			
+/*			jsdbg_ide_onclick({
+				type: "click",
+				target: root.querySelector(".c-object_props-key.state_active")
+			});*/
+		}
+		
+	} // c-object_props END
+}
+
+function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
+	
+	// cmd_code_editor_show_class_browser
+	if(ev.type == 'cmd_code_editor_show_class_browser'
+	|| trg1.className.indexOf('cmd_code_editor_show_class_browser') > -1 
+	|| trg1p.className.indexOf('cmd_code_editor_show_class_browser') > -1) 
+	{
+		// нужно показать уже существующее окно?
+		if(trg1.dataset.winId) {
+			var win = document.getElementById(trg1.dataset.winId);
+			if(win) {
+				win_onmouse({type: 'winshow', target: win});
+				return;
+			}
+		}
+				
+		// новое окно -> ищем свободный id
+		for(var id = 1;;id++)
+			if(document.getElementById("jsdbg_class_browser_"+id)) continue;
+			else break;
+	
+		var win = document.createElement("DIV");
+		win.id = 'jsdbg_class_browser_'+id;
+		win.className = "win jsdbg-class-browser win-is-hidden";
+		win.style.height = '600px';
+		win.style.width = '700px';
+		win.addEventListener('resize', function(){ 
+			var editor = code_editor('#'+win.id+" .c-code_editor-textarea");
+			if(editor.resize) {
+				editor.resize(true);
+				editor.renderer.updateFull(true);
+			}
+		})
+		win.dataset.winSettingsLocalStorage = 'jsdbg_class_browser_'+id;
+		win.innerHTML = '<div id="jsdbg_class_browser_'+id+'_title" style="height:35px;" class="win-header">Class Browser <a class="win-minimize-btn" href="javascript:void(0)" title="Minimize (ESC)">_</a><a class="win-close-btn" href="javascript:void(0)" title="Close">x</a></div>'+
+		
+		'<div class="win-area" style="display:flex;display:-webkit-box;min-height:165px;">'+
+		
+		'<div id="jsdbg_class_browser_'+id+'_class_hierarchy" class="win-area" style="min-wi1dth:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
+		'<optgroup id="jsdbg_class_browser_'+id+'_js_classes" label="(no file)"></optgroup></select></div>'+
+		
+		'<div id="jsdbg_class_browser_'+id+'_splitter1" class="win-splitter type_vertical"></div>'+
+		
+		'<div id="jsdbg_class_browser_'+id+'_class_object_methods" class="win-area" style="min-wid1th:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
+		'<optgroup id="jsdbg_class_browser_'+id+'_class_methods" label="class (static methods)"></optgroup>'+
+		'<optgroup id="jsdbg_class_browser_'+id+'_object_methods" label="object"></optgroup>'+
+		'</select></div>'+
+		'</div>'+
+		
+		'<div id="jsdbg_class_browser_'+id+'_splitter2" class="win-splitter type_horizontal"></div>'+
+		
+		'<div class="win-area" style="flex-grow:5;-webkit-box-flex:5.0;position:relative;">'+
+		'<div id="jsdbg_class_browser_'+id+'_code_toolbar" style="height:25px;position:absolute;width:100%;overflow:hidden;z-index:1">'+
+		'<div class="c-toolbar" data-win-id="jsdbg_class_browser_'+id+'">'+
+		'<button class="c-toolbar-btn cmd_code_editor_save" title="Save changes"><i class="ico-save"></i>Save</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_run" title="Evalute selected fragment"><i class="ico-play"></i>RunIt</button>'+
+		'<button class="c-toolbar-btn cmd_code_editor_start_debug" title="Debug selected fragment"><i class="ico-bug"></i>DebugIt</button>'+
+		'<button class="c-toolbar-btn cmd_code_editor_inspect_it" title="Evalute selected fragment and explore result"><i class="ico-eye"></i>ExploreIt</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_set_breakpoint"><i class="ico-add-brk"></i>Set breakpoint</button>'+
+		'<span class="c-toolbar-divider"></span>'+
+		'<button class="c-toolbar-btn cmd_code_editor_new_class"><i class="ico-plus"></i>Class</button>'+
+		'<button class="c-toolbar-btn cmd_code_editor_new_method"><i class="ico-plus"></i>Method</button>'+
+		'</div></div>'+
+		
+		'<div id="jsdbg_class_browser_'+id+'_code" class="c-code_editor" style="/*min-height:345px;*/position:absolute;left:0;top:0;right:0;bottom:0;padding-top:25px;height:100%;box-sizing:border-box;-moz-box-sizing:border-box;">'+
+		'<pre id="jsdbg_class_browser_'+id+'_brkpnts" class="c-code_editor-bg" style="height:100%;width:100%;display:block;background:transparent;position:absolute;top:0;left:0;z-index:-1;color:transparent;"></pre>'+
+		'<textarea id="jsdbg_class_browser_'+id+'_code_editor" class="c-code_editor-textarea" style="width:100%;height:100%;background:transparent;" placeholder="ALT+Q - Ace.js"></textarea></div>'+
+		'</div>'+
+		'<div class="win-resizer"></div>';
+
+		document.body.appendChild(win);
+		
+		// Базовые JS прототипы/классы
+		var js_class_names = ["<option>Number</option>", "<option>String</option>", "<option>Boolean</option>", "<option>Symbol</option>", "<option>Date</option>", "<option>Array</option>", "<option>Object</option>", "<option>Function</option>"];
+		// пользовательские прототипы
+		var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
+		for(var name in window) {
+			if(window[name] && window[name].prototype
+			&& "QWFPGJLUYARSTDHNEIOZXCVBKMЯЖФПГЙЛУЫЮШЩАРСТДХНЕИОЬЗЧЦВБКМЁЪ".indexOf(name[0]) > -1
+			&& !prototype_to_file_map[name]
+			) {
+				js_class_names.push("<option>"+name+"</option>");
+			}
+		}
+		
+		// Gecko specific code
+		var window_props = Object.getOwnPropertyNames(window);
+		for (var i = 0; i < window_props.length; i++) {
+			var name = window_props[i];
+			if ((window[name]||{}).prototype 
+			&& "QWFPGJLUYARSTDHNEIOZXCVBKM".indexOf(name[0]) > -1 
+			&& js_class_names.indexOf("<option>"+name+"</option>") == -1
+			&& !prototype_to_file_map[name]
+			)
+				js_class_names.push("<option>"+name+"</option>");
+		}
+
+		// загружаем классы не распределённые по файлам
+		var optgroup = document.getElementById("jsdbg_class_browser_"+id+"_js_classes");
+		js_class_names.sort();
+		optgroup.innerHTML = js_class_names.join("");
+		
+		// выведем классы по файлам
+		var select_classes = optgroup.parentNode;
+		var our_optgroups = {};
+		for(var protoname in prototype_to_file_map) {
+			var file_name = prototype_to_file_map[protoname];
+
+			// создадим optgroup для файла если ещё нет
+			if (!our_optgroups[file_name]) {
+				our_optgroups[file_name] = document.createElement("OPTGROUP");
+				our_optgroups[file_name].id = "jsdbg_class_browser_" + id + "_our_classes_" + file_name;
+				our_optgroups[file_name].label = file_name;
+				select_classes.insertBefore(our_optgroups[file_name], select_classes.lastChild);
+			}
+
+			// добавим protoype/function в optgroup
+			our_optgroups[file_name].appendChild(document.createElement('OPTION'));
+			our_optgroups[file_name].lastChild.innerHTML = protoname;
+			our_optgroups[file_name].lastChild.dataset.fileName = file_name;
+			our_optgroups[file_name].lastChild.dataset.prototypeName = protoname;
+		}
+		
+		// покажем окно наконец (чтоб загрузились сохр.настройки окна)
+		win_onmouse({type:'winshow', target: win});
+		
+		// добавим кнопку на панель
+		if(document.getElementById("jsdbg_ide_panel") && !document.querySelector("#jsdbg_ide_panel .cmd_code_editor_show_class_browser")) {
+			var button = document.createElement("BUTTON");
+			button.innerHTML = "Class Browser";
+			button.className = "cmd_code_editor_show_class_browser";
+			button.dataset.winId = 'jsdbg_class_browser_'+id;
+			document.getElementById("jsdbg_ide_panel").insertBefore(button, document.getElementById("jsdbg_ide_panel").lastElementChild);
+		}
+	}
+	
+	// #jsdbg_class_browser_NNN_js/our_classes
+	if(trg1.nodeName == 'OPTION' && (trg1p.id||"").match(/_(js|our)_classes/)) {
+		var win_id = trg1p.id.replace(/_(js|our)_classes.*/, "");
+		var clazz = window[trg1.innerHTML] || (new Function('', '	debugger; // no prototype/class '+trg1.innerHTML+' found!'));
+		
+		// object methods
+		var methods = [];
+		var list = Object.getOwnPropertyNames(clazz.prototype||{});
+		for(var i = 0; i < list.length; i++)
+		if(clazz.prototype[list[i]] instanceof Function) {
+			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-prototype-name="'+trg1.innerHTML+'" data-func-name="prototype.'+list[i]+'">'+list[i]+'</option>');
+		}
+		if(clazz.prototype && clazz.prototype.__proto__)
+		for(var meth_name in clazz.prototype.__proto__)
+		if(clazz.prototype.__proto__[meth_name] instanceof Function) {
+			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-prototype-name="'+trg1.innerHTML+'" data-func-name="'+meth_name+'">'+meth_name+'</option>');
+		}
+		methods.sort();
+		document.getElementById(win_id+"_object_methods").innerHTML = methods.join("");
+		
+		// prototype methods (static)
+		var methods = [];
+		var list = Object.getOwnPropertyNames(clazz);
+		for(var i = 0; i < list.length; i++)
+		if(clazz[list[i]] instanceof Function) {
+			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-prototype-name="'+trg1.innerHTML+'" data-func-name="'+list[i]+'">'+list[i]+'</option>');
+		}
+		methods.sort();
+		document.getElementById(win_id+"_class_methods").innerHTML = methods.join("");
+		
+		// загрузим код прототипа в редактор кода
+		var code_editor = code_editor('#'+win_id+' .c-code_editor-textarea');
+		code_editor.setValue((clazz||'').toString(), -1);
+		
+		// сохраним выбранный файл/прототип/метод
+		var win = document.querySelector('#'+win_id);
+		win.dataset.fileName = trg1.dataset.fileName;
+		win.dataset.prototypeName = trg1.innerHTML;
+		win.dataset.funcName = '';
+	}
+	
+	// #jsdbg_ide_class_browser_NNN_class/object_methods
+	if(trg1.nodeName == 'OPTION' && (trg1p.id||"").match(/_(class|object)_methods/)) {
+		// удаление метода
+		if (ev.altKey) {
+			if(confirm('Delete method "'+trg1.dataset.funcName+'"?')) {
+				if(trg1p.id.match(/object_methods/))
+					delete window[trg1.dataset.prototypeName].prototype[trg1.dataset.funcName.replace('prototype.', '')];
+				else
+					delete window[trg1.dataset.prototypeName][trg1.dataset.funcName];
+			}
+			// TODO refresh list
+			return;
+		}
+		
+		var func_name = trg1.dataset.funcName;
+		var prototype_name = trg1.dataset.prototypeName;
+		var func = eval("("+prototype_name+(func_name?'.':'')+func_name+")");
+		
+		// загрузим исходный код метода в редактор кода
+		var win_id = trg1p.id.replace(/_(class|object)_methods/, "");
+		var code_editor = code_editor('#'+win_id+' .c-code_editor-textarea');
+		code_editor.setValue(func.toString(), -1);
+		if(code_editor.session) code_editor.session.foldAll();
+		
+		// сохраним выбранный файл/прототип/метод
+		var win = document.querySelector('#'+win_id);
+		win.dataset.funcName = func_name.replace('.prototype', '');
+		win.dataset.prototypeName = prototype_name;
+		win.dataset.fileName = trg1.dataset.fileName;
+		
+		// отметим тип методов (static/prototype)
+		jsdbg_ide_onclick({type: 'click', target: trg1p});
+	}
+
+	// #jsdbg_ide_class_browser_NNN_class/static or prototype methods
+	if(trg1.nodeName == 'OPTGROUP' && (trg1.id||"").match(/_(class|object)_methods/))
+	{
+		if (trg1.id.match(/class_methods/)) {
+			trg1.className = "selected";
+			trg1.label = trg1.label.replace('*','')+'*';
+			trg1.nextElementSibling.className = "";
+			trg1.nextElementSibling.label = trg1.nextElementSibling.label.replace('*', '');
+		}
+		else {
+			trg1.className = "selected";
+			trg1.label = trg1.label.replace('*','')+'*';
+			trg1.previousElementSibling.className = "";
+			trg1.previousElementSibling.label = trg1.previousElementSibling.label.replace('*', '');
+		}
+	}
+}
+
+function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
+
+	// [debugger.*]
+	if(ev.type.indexOf("debugger.") > -1) {
+		var panel = document.getElementById("jsdbg_ide_panel");
+		
+		// поищем кнопку, и если есть откроем окно дебагера
+		for (var ii = 0; ii < panel.childNodes.length; ii++) {
+			var button = panel.childNodes[ii];
+			if (button.debugger1 == ev.debugger) {
+				var id = button.innerHTML.replace(/.+?#/, '');
+				if (! document.getElementById("jsdbg_debugger_"+id))
+					button.click();
+				else
+					jsdbg_ide_onclick({type: "refresh_dbg_debugger", dbg_id: "jsdbg_debugger_"+id});
+				return
+			}
+		}
+		
+		// иначе добавим кнопку на панель
+		var button = document.createElement('BUTTON');
+		button.className = "cmd_code_editor_debugger";
+		button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
+		button.debugger1 = ev.debugger;
+
+		if(document.getElementById("jsdbg_ide_panel")) {
+			panel.insertBefore(button, panel.firstElementChild);
+		}
+		else {
+			button.className = "c-panel-btn cmd_code_editor_debugger";
+			document.querySelector("#ide_main_window .c-toolbar").appendChild(button);
+		}
+		
+		// и нажмём на неё, чтоб дебагер открылся
+		button.click();
+	}
+	
+	// [refresh_dbg_debugger]
+	if(ev.type == "refresh_dbg_debugger") {
+		var dbg_id = ev.dbg_id || trg1.id;
+		var selected_ctx_num = ev.selected_ctx_num;
+		
+		var debugger1 = jsdbg; //document.getElementById(dbg_id).debugger;
+		var ex = document.getElementById(dbg_id).ex;
+		
+		// очистим стек вызовов
+		var call_stack_select = document.getElementById(dbg_id+'_callstack').firstElementChild;
+		call_stack_select.innerHTML = '';
+		
+		// загрузим стек вызовов
+		var selected_ctx = debugger1.ctx
+		for(var curr_ctx = debugger1.ctx; curr_ctx; curr_ctx = curr_ctx.__down) {
+			
+			// создадим option и заполним её параметрами
+			var option = document.createElement('OPTION');
+			call_stack_select.appendChild(option);
+			option.value = call_stack_select.options.length;
+			
+			// надпись
+			var start_offset = Math.floor(curr_ctx.__ip / 10000);
+			var option_caption = (curr_ctx.__func||(curr_ctx.__callee||{}).name||'?') + ':' + curr_ctx.__ip;
+			if (curr_ctx.__callee) option_caption += ' - ' + jsdbg.source[curr_ctx.__callee.__jsdbg_id].substring(start_offset, start_offset+100);
+			option.innerHTML = option_caption.length > 100 
+				? option_caption.substring(0, 100) + '...' 
+				: option_caption;
+				
+			// возмём выделенный контекст если попросили
+			if (selected_ctx_num === call_stack_select.options.length-1) { 
+				selected_ctx = curr_ctx;
+				option.selected = true;
+			}
+		}
+		
+		// загрузим контекст/scope в watch
+		jsdbg_ide_onclick({
+			type: 'load', 
+			target: document.getElementById(dbg_id+'_watch').firstElementChild,
+			show_toolbar: false,
+			object_to_load: selected_ctx,
+			clear_before_load: true
+		});
+		
+		// TODO ace
+		var editor = document.getElementById(dbg_id+'_code_editor');
+		
+		// исходный код
+		if (selected_ctx.__callee) {
+			editor.value = jsdbg.source[selected_ctx.__callee.__jsdbg_id];
+		}
+		else {
+			editor.value = (selected_ctx.__callee||'').toString();
+		}
+		editor.setAttribute("data-func-name", selected_ctx.__func || selected_ctx.__callee.name);
+		document.getElementById(dbg_id).className = document.getElementById(dbg_id).className.replace(/ *dbg_readonly_code/, ""); // отчистим атрибут только для чтения
+
+		// выделим нужный фрагмент
+		var start = Math.floor(selected_ctx.__ip / 10000);
+		var end = selected_ctx.__ip % 10000;
+		editor.setSelectionRange(start, end);
+		editor.blur();
+		editor.focus();
+		editor.setSelectionRange(start, end);
+	}
+
+	// [show_debugger_win]
+	if(ev.type == "show_debugger_win") 
+	{
+		var button = trg1;
+		var id = (button.innerHTML.match(/#([0-9]+)/) || [0, 1])[1];
+		
+		var html = [
+		'<div id="jsdbg_debugger_'+id+'" class="win jsdbg-ide-debugger" style="width:640px;height:625px;">',
+			'<div id="jsdbg_debugger_'+id+'_title" class="win-header">',
+				'Debugger #'+id,
+				'<a class="win-minimize-btn" href="javascript:void(0)" title="Minimize (ESC)">_</a><a class="win-close-btn" href="javascript:void(0)" title="Close">x</a>',
+			'</div>',
+			'<div id="jsdbg_debugger_'+id+'_callstack" class="win-area" style="box-sizing:border-box;height:20px;flex:initial;-webkit-box-flex:initial;">',
+				'<select style="width:100%;"></select>',
+			'</div>',
+		    '<div id="jsdbg_debugger_'+id+'_code_toolbar" class="win-area" style="min-height:20px;flex:initial;-webkit-box-flex:initial;">',
+				'<div class="c-toolbar" data-win-id="jsdbg_debugger_'+id+'">'+
+				'<button class="c-toolbar-btn cmd_code_editor_save" title="Save changes"><i class="ico-save"></i>Save</button>'+
+				'<span class="c-toolbar-divider"></span>'+
+				'<button class="c-toolbar-btn cmd_code_editor_continue" title="Continue"><i class="ico-play"></i></button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_step_over" title="Step over"><i class="ico-step_over"></i></button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_step_in" title="Step in"><i class="ico-step_in"></i></button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_step_out" title="Step out"><i class="ico-step_out"></i></button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_restart" title="Restart"><i class="ico-restart"></i></button>'+
+				'<span class="c-toolbar-divider"></span>'+
+				'<button class="c-toolbar-btn cmd_code_editor_run" title="Evalute selected fragment"><i class="ico-play"></i>RunIt</button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_start_debug" title="Debug selected fragment"><i class="ico-dbg-start"></i>DebugIt</button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_inspect_it" title="Evalute selected fragment and explore result"><i class="ico-eye"></i>ExploreIt</button>'+
+				'<span class="c-toolbar-divider"></span>'+
+				'<button class="c-toolbar-btn cmd_code_editor_set_breakpoint"><i class="ico-add-brk"></i>Set breakpoint</button>'+
+				'</div>',
+			'</div>',
+			'<div id="jsdbg_debugger_'+id+'_code" class="win-area c-code_editor" style="flex:50;-webkit-box-flex:50;position:relative;">'+
+				'<pre id="jsdbg_debugger_'+id+'_brkpnts" class="c-code_editor-bg" style="height:100%;width:100%;display:block;background:white;position:absolute;top:0;left:0;z-index:-1;color:transparent;"></pre>'+
+				'<textarea id="jsdbg_debugger_'+id+'_code_editor" class="c-code_editor-textarea" style="width:100%;height:100%;background:transparent;position:absolute;top:0;left:0;top:0;bottom:0;right:0;"></textarea>',
+			'</div>',
+			'<div id="jsdbg_debugger_'+id+'_splitter" class="win-splitter type_horizontal"></div>',
+			'<div id="jsdbg_debugger_'+id+'_watch" class="win-area" style="flex:10;-webkit-box-flex:10.0">'+
+				'<div class="c-object_props" style="width:100%;" data-win-id="jsdbg_debugger_'+id+'"></div>',
+			'</div>',
+			'<div class="win-resizer"></div>',
+		'</div>'
+		];
+		document.body.insertAdjacentHTML('beforeend', html.join(''));
+		var win = document.getElementById('jsdbg_debugger_'+id);
+		
+		// привяжем объект для управления дебагом
+		document.getElementById(win.id).debugger = button.debugger;
+		document.getElementById(win.id).ex = button.ex;
+		
+		jsdbg_ide_onclick({
+			type: "refresh_dbg_debugger",
+			target: document.getElementById("jsdbg_debugger_"+id)});
+	}
+	
+	// cmd_code_editor_start_debug
+	if(ev.type == 'start_debug'
+	|| trg1.className.indexOf('cmd_code_editor_start_debug') > -1
+	|| trg1p.className.indexOf('cmd_code_editor_start_debug') > -1)
+	{
+		if (!ev.src) {
+			var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+			var editor = code_editor('#'+win_id+' .c-code_editor-textarea');
+			var file_name = document.getElementById(win_id).dataset.fileName;
+			// file_name = file_name == "(new...)" ? "(no file)" : file_name;
+
+			var src = editor.getSelectedText();
+			if (src == "") src = editor.getValue();
+		}
+		else {
+			var win_id = '';
+			var file_name = '';
+			var src = ev.src;
+		}
+		
+		// если в дебагере, то на основе текущего контекста создаём новый дебагер
+		if(win_id.match(/^jsdbg_debugger_/))
+			var debugger1 = jsdbg.debug(src, file_name, document.getElementById(win_id).debugger1.ctx);
+		
+		// иначе в глобальной области видимости
+		else 
+			var debugger1 = jsdbg.debug(src, file_name);
+		
+		var button = document.createElement('BUTTON');
+		button.className = "cmd_code_editor_debugger";
+		button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
+		button.debugger1 = debugger1;
+		
+		if(document.getElementById("jsdbg_ide_panel")) {
+			document.getElementById("jsdbg_ide_panel").insertBefore(button, document.getElementById("jsdbg_ide_panel").firstElementChild);
+		}
+		else {
+			button.className = "c-panel-btn cmd_code_editor_debugger";
+			document.querySelector("#ide_main_window .c-toolbar").appendChild(button);
+		}
+		
+		button.click();
+		
+		return debugger1;
+	}
+	
+	// cmd_code_editor_debugger
+	if(ev.type == "click" && trg1.className.indexOf('cmd_code_editor_debugger') > -1 || trg1p.className.indexOf('cmd_code_editor_debugger') > -1) {
+		var button = trg1p.className.indexOf('cmd_code_editor_debugger') > -1 ? trg1p : trg1;
+		var id = button.innerHTML.replace(/.+?#/, '');
+		var win = document.getElementById("jsdbg_debugger_"+id);
+		if(!win) {
+			jsdbg_ide_onclick({
+			type: "show_debugger_win",
+			target: button});
+		}
+		else if(win.style.display == "none") {
+			win.style.display = "block";
+			win.querySelector(".c-code_editor-textarea").focus();
+		}
+		else 
+			win.style.display = "none";
+	}
+	
+	// cmd_code_editor_continue
+	if(ev.type == "click" && (trg1.className.indexOf('cmd_code_editor_continue') > -1 || trg1p.className.indexOf('cmd_code_editor_continue') > -1)) {
+	
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		
+		var debugger1 = document.getElementById(win_id).debugger1;
+		
+		try {
+			debugger1.continue(true);
+		} catch(ex) {
+			if(ex != "Breakpoint!") {
+				alert(ex + "\n" + ex.stack);
+				console.info(ex.stack);
+			}
+		}
+		
+		// выделяем фрагмент кода текущий
+		var ide_main_window = document.getElementById(win_id+'_code_editor');
+		ide_main_window.setSelectionRange(
+			debugger1.ctx.range(1), 
+			debugger1.ctx.range(2));
+		
+		jsdbg_ide_onclick({
+			type: "refresh_dbg_debugger",
+			target: document.getElementById(win_id)});
+	}
+	
+	// cmd_code_editor_restart
+	// TODO не перезапускает предыдущей метод по контексту?
+	if(trg1.className.indexOf('cmd_code_editor_restart') > -1 || trg1p.className.indexOf('cmd_code_editor_restart') > -1) {
+		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var editor = code_editor('#'+win_id+" .c-code_editor-textarea");
+		var file_name = editor.dataset.fileName;
+		var debugger1 = document.getElementById(win_id).debugger1;
+		
+		// если мы в функции, то перезапустим функцию
+		for (var func_ctx = debugger1.ctx; func_ctx; func_ctx = func_ctx.parent) {
+			if (func_ctx.type & 16) {
+				
+				var ctx = func_ctx.parent; // вызывающий список
+				
+				// сконструируем заново scope
+				var new_scope = {arguments: ctx.result.slice(1), thiz: ctx.this_for_elem1};
+				var arg_names = ctx.result[0].__littlelisp.args_names;
+				for(var i = 0; i < arg_names.length-1; i++)
+					new_scope[ctx.result[0].__littlelisp.source.substring(arg_names[i] >> 16, 
+						(arg_names[i] >> 16) + (arg_names[i] & 65535))] 
+						= ctx.result[i+1];
+				
+				// создадим стартовый контекст функции
+				debugger1.ctx = new littleLisp.Context(new_scope, ctx, ctx.result[0].__littlelisp.body, 0, ctx.result[0].__littlelisp.source, ctx.result[0].__littlelisp.file, func_ctx.type);
+				
+				jsdbg_ide_onclick({
+					type: "refresh_dbg_debugger",
+					target: document.getElementById(win_id)});
+				
+				return;
+			}
+			if (func_ctx.type & 32 /* type=nested_debugging */) break;
+		}
+		
+		// пересоздаём контекст заново на основе текущего текста/исходника
+		// TODO restart only function context
+		debugger1.ctx = new littleLisp.Context(window, debugger1.ctx.parent, littleLisp.parse(editor.value), undefined, editor.value, file_name, debugger1.ctx.type);
+		
+		jsdbg_ide_onclick({
+			type: "refresh_dbg_debugger",
+			target: document.getElementById(win_id)});
+	}
+	
+	// cmd_code_editor_step_in/over/out
+	if(trg1.className.indexOf('cmd_code_editor_step_in') > -1 || trg1p.className.indexOf('cmd_code_editor_step_in') > -1 || trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1 || trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1) {
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		
+		var debugger1 = jsdbg;
+		
+		// сделаем шаг
+		try {
+		if(trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1)
+			debugger1.stepOver();
+		else if(trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1)
+			debugger1.stepOut();
+		else 
+			debugger1.stepIn();
+		} catch(ex) {
+			console.error(ex.stack || ex);
+			alert(ex.stack || ex);
+		}
+		
+		// выделяем фрагмент кода текущий
+		var ide_main_window = document.getElementById(win_id+'_code_editor');
+		ide_main_window.setSelectionRange(
+			Math.round(debugger1.ctx.__ip/10000), 
+			debugger1.ctx.__ip % 10000);
+		
+		jsdbg_ide_onclick({
+			type: "refresh_dbg_debugger",
+			target: document.getElementById(win_id)});
+	}
+
+	// cmd_code_editor_run
+	if(ev.type == "click" && (trg1.className.indexOf('cmd_code_editor_run') > -1 || trg1p.className.indexOf('cmd_code_editor_run') > -1)) {
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var ide_main_window = document.getElementById(win_id).querySelector(".c-code_editor-textarea");
+		var file_name = ide_main_window.getAttribute("data-file-name") || document.getElementById('jsdbg_file_list_selector').value;
+		file_name = file_name == "(new...)" ? "(no file)" : file_name;
+		
+		if(ide_main_window.selectionStart == ide_main_window.selectionEnd) 
+			var src = ide_main_window.value;
+		else
+			var src = ide_main_window.value.substring(ide_main_window.selectionStart, ide_main_window.selectionEnd);
+		
+
+		try {
+			// если в дебагере, то на основе текущего контекста создаём новый дебагер
+			if(win_id.match(/^jsdbg_debugger_/))
+				var debugger1 = jsdbg.debug(src, file_name /* +"-debug"+jsdbg_ide_onclick.debugger_win_next_num */, document.getElementById(win_id).debugger1.ctx);
+			
+			// иначе в глобальной области видимости
+			else 
+				var debugger1 = jsdbg.debug(src, file_name);
+		} 
+		catch(ex) {
+			console.error(ex);
+			alert(ex+'\n'+ex.stack)
+			return;
+		}
+		
+		// запустим
+		try {
+			var result = debugger1.continue();
+		} 
+		catch(ex) {
+			if(ex != "Breakpoint!") {
+				alert(ex+'\n'+ex.stack)
+				console.info(ex.stack);
+			}
+			
+			// jsdbg.debug(..., onerror_callback) сам откроет дебаггер
+		
+			return;
+		}
+		
+		try {
+			alert("RESULT: " + (result instanceof Function 
+				? result : JSON.stringify(result)))
+		} catch(ex) {
+			alert("RESULT: " + result);
+		}
+		return;
+	}
+
+	// #jsdbg_debugger_NNN_callstack > select
+	if(ev.type == 'click' && trg1.nodeName == 'SELECT' && (trg1p.id||'').indexOf('_callstack') > -1) {
+		jsdbg_ide_onclick({
+			type: "refresh_dbg_debugger",
+			target: document.getElementById(trg1.getAttribute("data-win-id")),
+			selected_ctx_num: trg1.selectedIndex});
+	}
+}
+
+function jsdbg_ide_onkey(event) {
+	var ev = event || window.event;
+	var trg1 = ev.target || document.body.parentNode;
+	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.body.parentNode; // #document
+    if (trg1.nodeType && trg1.nodeType == 3) trg1 = trg1.parentNode; // #text
+	var trg1p = (trg1.parentNode && trg1.parentNode.nodeType != 9) ? trg1.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
+	var trg1pp = (trg1p.parentNode && trg1p.parentNode.nodeType != 9) ? trg1p.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
+	// console.log(event);
+	
+	// [textarea] ТАВ
+	if(ev.keyCode == 9 && ev.type == "keydown") {
+// 				document.execCommand("styleWithCSS", true, null);
+	
+		if(trg1.nodeName = "TEXTAREA") {
+			var textEvent = document.createEvent("TextEvent");
+			if (textEvent.initTextEvent) {
+				textEvent.initTextEvent("textInput", true, true, null, "\t");
+				trg1.dispatchEvent(textEvent);
+			} 
+			
+			// для старых броузеров по старому
+			else {
+				var cursor_pos = trg1.selectionStart;
+				trg1.value = trg1.value.substring(0, trg1.selectionStart) + '\t' + trg1.value.substring(trg1.selectionStart);
+				trg1.selectionStart = trg1.selectionEnd = cursor_pos + 1;
+			}
+				
+			if(ev.stopPropagation) ev.stopPropagation();
+			else ev.cancelBubble = true;
+		
+			if(ev.preventDefault) ev.preventDefault();
+			else ev.returnValue = false;
+		
+			return false;
+		}
+	
+		if(ev.shiftKey)
+			document.execCommand('outdent', true, null);
+		else
+			document.execCommand('indent', true, null);
+
+		if(ev.stopPropagation) ev.stopPropagation();
+		else ev.cancelBubble = true;
+		
+		if(ev.preventDefault) ev.preventDefault();
+		else ev.returnValue = false;
+		
+		return false;
+	}
+
+	// [win] ESC
+	if(ev.keyCode == 27 && ev.type == "keydown") {
+		var windows = document.querySelectorAll(".win");
+		for(var i = windows.length-1; i >= 0 ; i--)
+			if(windows[i].className.indexOf('win-is-hidden') < 0) {
+				if(windows[i].querySelector(".win-minimize-btn"))
+					jsdbg_ide_onmouse({type: "mouseup", target: windows[i].querySelector(".win-minimize-btn")});
+				else
+					jsdbg_ide_onmouse({type: "mouseup", target: windows[i].querySelector(".win-close-btn")});
+				return;
+			}
+
+		// если нету окон, то скроем IDE
+		jsdbg_ide_onclick({type: "show_hide_jsdbg_ide"});
+	}
+	
+	// [textarea] ALT+A,CTR+I - InstpectIt
+	if(ev.keyCode == 65 && ev.type == "keydown" && ev.altKey 
+	|| ev.keyCode == 73 && ev.type == "keydown" && ev.ctrlKey
+	&& ev.shiftKey == false) {
+		jsdbg_ide_onclick({
+			type:"click", 
+			target: (document.getElementById(trg1.id.replace(/_(src|code_editor)$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_inspect_it")});
+	}
+	
+	// [textarea] ALT+R - DoIt
+	if(ev.keyCode == 84 && ev.type == "keydown" && ev.altKey) {
+		jsdbg_ide_onclick({
+			type:"click", 
+			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_run")});
+	}
+	
+	// [textarea] ALT+W - DebugIt
+	if(ev.keyCode == 87 && ev.type == "keydown" && ev.altKey) {
+		jsdbg_ide_onclick({
+			type:"click", 
+			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_start_debug")});
+	}
+	
+	// [textarea] ALT+S - Save
+	if(ev.keyCode == 83 && ev.type == "keydown" && ev.altKey) {
+		jsdbg_ide_onclick({
+			type:"click", 
+			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_save")});
+	}
+	
+	// [textarea] ALT+T - Set/unset breakpoint
+	if(ev.keyCode == 116 && ev.type == "keydown" && ev.altKey) {
+		jsdbg_ide_onclick({
+			type:"click", 
+			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_set_breakpoint")});
+	}
+
+	// ALT+Q - Ace.js
+	if(ev.keyCode == 81 && ev.type == "keydown" && ev.altKey) {
+		jsdbg_ide_onclick({type: "click", target: {className: "cmd_code_editor_load_and_activate_ACE"}});
+	}
+
+	// ALT-L - Prototype to file map
+	if(ev.keyCode == 76 && ev.type == "keydown" && ev.altKey) {
+		var new_value = prompt('Prototype to file map: ', localStorage.getItem('jsdbg_ide_prototype_to_file_map')||'');
+		if (new_value) {
+			new_value = eval('('+new_value+')');
+			localStorage.setItem('jsdbg_ide_prototype_to_file_map', JSON.stringify(new_value));
+		}
+	}
+}
+
+document.documentElement.addEventListener("keyup", jsdbg_ide_onkey);
+document.documentElement.addEventListener("keypress", jsdbg_ide_onkey);
+document.documentElement.addEventListener("keydown", jsdbg_ide_onkey);
+document.documentElement.addEventListener("change", jsdbg_ide_onkey);
+
+	
+function jsdbg_ide_onmouse(event) {
+	var ev = event || window.event || { type:'', target: document.body.parentNode };
+    var trg1 = ev.target || ev.srcElement || document.body.parentNode;
+	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.body.parentNode; // #DOCUMENT
+    if (trg1.nodeType && trg1.nodeType == 3) trg1 = trg1.parentNode; // #TEXT
+	var trg1p = (trg1.parentNode && trg1.parentNode.nodeType != 9) ? trg1.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
+
+	// mouseout-window
+	if( ev.type == "mouseout" && ev instanceof Event) {
+		e = ev.originalEvent || ev; // if jQuery.Event
+		active_node = (e.relatedTarget) ? e.relatedTarget : e.toElement;
+		if(!active_node) {
+// 				html_onmouse({type:'mouseout-window',target:(document.body||{}).parentNode||window});
+			jsdbg_ide_onmouse({type:"mouseout-window", target: trg1});
+			return;
+		}
+	}
+	
+	function find_near(class_name, if_not_found_return, start_node, prefix) {
+		// определим префикс блока
+		if(!prefix && (prefix = class_name.indexOf('!')+1) > 0) { 
+			var prefix1 = class_name.substring(0, prefix-1);
+			class_name = prefix1 + class_name.substring(prefix);
+		} else
+			var prefix1 = prefix || class_name.replace(/^([a-z]+-[^-]+).*$/, '$1');
+			
+		// найдём корневой node в блоке
+		for(var root = start_node || trg1; root.nodeName != 'HTML' && root.parentNode.className.indexOf(prefix1) > -1; root = root.parentNode);
+		
+		if(root.className.indexOf(class_name) > -1) return root;
+		
+		var nodes = root.getElementsByTagName('*');
+		for(var i=0; i<nodes.length; i++)
+			if(nodes[i].className && nodes[i].className.indexOf(class_name) > -1) 
+				return nodes[i];
+			
+		return if_not_found_return;
+	}
+
+	// show breakpoints background
+	if((ev.type == "mouseover" || ev.type == "mouseout" || ev.type == "mouseout-window") && (trg1.className.indexOf("c-toolbar-btn cmd_code_editor_set_breakpoint") > -1 || trg1p.className.indexOf("c-toolbar-btn cmd_code_editor_set_breakpoint") > -1)) {
+return;
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var textarea = document.getElementById(win_id).querySelector(".c-code_editor-textarea");
+		var file_name = textarea.getAttribute("data-file-name") || document.getElementById("jsdbg_file_list_selector").value;
+		file_name = file_name == "(new...)" ? "(no file)" : file_name;
+		var file_name_offset = parseInt(textarea.getAttribute("data-file_name-offset") || "0")
+		
+		// скроем подложку с breakpoints
+		if(ev.type == "mouseout") {
+			(textarea.previousElementSibling||{style:{}}).style.display = "none";
+			return;
+		}
+		
+		// если ничего не выделено, то покажем breakpoints
+		/*if(file_name in littleLisp.breakpoints) {
+			var points = [];
+			for(var brk in littleLisp.breakpoints[file_name])
+				points.push(brk);
+			points.sort();
+			
+			var result = textarea.value;
+			for(var i = points.length-1; i >= 0; i--) {
+				var off = (points[i]*1 >> 16) - file_name_offset;
+				var len = points[i]*1 & 65535;
+				result = result.substring(0, off) + "<strike style=\"background:red\">" + result.substring(off, off+len) + "</strike>" + result.substring(off+len);
+			}
+			
+			textarea.previousElementSibling.innerHTML = result;
+		}*/
+		
+		textarea.previousElementSibling.style.display = "block";
+		textarea.previousElementSibling.scrollTop = textarea.scrollTop;
+	}
+}
+
+// jsdbg_ide_onmouse.cursor = {};
+/*
+document.documentElement.addEventListener("mousedown", jsdbg_ide_onmouse);
+document.documentElement.addEventListener("mousemove", jsdbg_ide_onmouse);
+document.documentElement.addEventListener("mouseup", jsdbg_ide_onmouse);
+document.documentElement.addEventListener("mouseout", jsdbg_ide_onmouse);
+document.documentElement.addEventListener("mouseover", jsdbg_ide_onmouse);
+*/
+// кнопка показа IDE
+document.addEventListener('DOMContentLoaded', function(){
+if (!document.getElementById("jsdbg_ide_main_window_show")) {
+	var div = document.createElement("DIV");
+	div.id = "jsdbg_ide_panel";
+	div.setAttribute("style", "position:fixed; right: 2px; bottom: 2px; display: block; z-index: 999; text-align: right;");
+	div.innerHTML = '<button id="jsdbg_ide_main_window_show" onclick="jsdbg_ide_onclick({type: \'show_hide_jsdbg_ide\'})">New Class Browser</button><button id="" onclick="jsdbg_ide_onclick({type:\'show_debugger_win\', target: this})">New Debgger</button>';
+	
+	try {
+		document.querySelector("body").appendChild(div);
+	}
+	catch(ex) {
+		try { 
+			document.querySelector("html").appendChild(div);
+		} catch(ex2) {
+			alert(ex2);
+			console.log(ex2);
+		}
+	}
+}
+});
+
+function win_onmouse(event) {
+	var ev = event || window.event || { type:'', target: document.body.parentNode };
+    var trg1 = ev.target || ev.srcElement || document.body.parentNode;
+	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.body.parentNode; // #DOCUMENT
+    if (trg1.nodeType && trg1.nodeType == 3) trg1 = trg1.parentNode; // #TEXT
+	var trg1p = (trg1.parentNode && trg1.parentNode.nodeType != 9) ? trg1.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
+
+	// mouseout-window
+	if( ev.type == "mouseout" && ev instanceof Event) {
+		e = ev.originalEvent || ev; // if jQuery.Event
+		active_node = (e.relatedTarget) ? e.relatedTarget : e.toElement;
+		if(!active_node) {
+// 				html_onmouse({type:'mouseout-window',target:(document.body||{}).parentNode||window});
+			win_onmouse({type:"mouseout-window", target: trg1});
+			return;
+		}
+	}
+	
+	function find_near(class_name, if_not_found_return, start_node, prefix) {
+		// определим префикс блока
+		if(!prefix && (prefix = class_name.indexOf('!')+1) > 0) { 
+			var prefix1 = class_name.substring(0, prefix-1);
+			class_name = prefix1 + class_name.substring(prefix);
+		} else
+			var prefix1 = prefix || class_name.replace(/^([a-z]+-[^-]+).*$/, '$1');
+			
+		// найдём корневой node в блоке
+		for(var root = start_node || trg1; root.nodeName != 'HTML' && root.parentNode.className.indexOf(prefix1) > -1; root = root.parentNode);
+		
+		if(root.className.indexOf(class_name) > -1) return root;
+		
+		var nodes = root.getElementsByTagName('*');
+		for(var i=0; i<nodes.length; i++)
+			if(nodes[i].className && nodes[i].className.indexOf(class_name) > -1) 
+				return nodes[i];
+			
+		return if_not_found_return;
+	}
+
+	if(ev.type == 'init_win_css') {
+		var style_tag = document.getElementById("win-css");
+		if(!style_tag) {
+			style_tag = document.createElement("STYLE");
+			style_tag.id = "win-css";
+			style_tag.type = "text/css";
+			style_tag.appendChild(
+				document.createTextNode(win_onmouse.win_css_styles));
+			document.querySelector("head").insertBefore(style_tag, document.querySelector("head > style"));
+		}
+	}
+	
+	// .win/.win-header [mousedown]
+	if(ev.type == 'mousedown' && trg1.className.indexOf('win-header') > -1) {
+		var ev_pageX = ev.pageX || (ev.clientX+document.documentElement.scrollLeft);
+		var ev_pageY = ev.pageY || (ev.clientY+document.documentElement.scrollTop);
+
+		// найдём правильный заголовок окна и само окно для перетаскивания
+		for(var trg = trg1; trg.className.indexOf('win-header') > -1;)
+			trg = trg.parentNode;
+	
+		// отменим всплытие, и запретим выделение
+		if(ev.stopPropagation) ev.stopPropagation();
+		else ev.cancelBubble = true;
+		document.ondragstart = function(){ return false; }
+		document.body.onselectstart = function() { return false } // IE8
+		ev.preventDefault(); // new browsers
+		
+		// стартовые кординаты мыши
+		win_onmouse.startPoint = [ev_pageX, ev_pageY, ev.clientX, ev.clientY];
+		
+		var trg_offset = trg.getBoundingClientRect();
+		var trg_style = trg.currentStyle || window.getComputedStyle(trg, null);
+		var start_params = [
+			trg.offsetHeight, trg.offsetWidth,
+			parseInt(trg_style.left == 'auto' ? '0' : trg_style.left),
+			parseInt(trg_style.top == 'auto' ? '0' : trg_style.top),
+			trg_offset.left, trg_offset.top,
+			Math.round(trg_offset.left) + (window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0),
+			Math.round(trg_offset.top) + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0),
+		];
+		win_onmouse.startParams = start_params;
+		trg.style.position = trg_style.position;
+		
+		win_onmouse.win = trg;
+		return false; // подавим активацию выделения
+	}
+	
+	// .win [mousemove]
+	if(ev.type == 'mousemove' && win_onmouse.win) {
+		var trg = win_onmouse.win;
+		var base_point = win_onmouse.startPoint;
+		var start_params = win_onmouse.startParams;
+		switch(trg.style.position) {
+			case 'fixed':
+				trg.style.left = start_params[4]+ev.clientX-base_point[2]+'px';
+				trg.style.top = start_params[5]+ev.clientY-base_point[3]+'px';
+				break;
+			default:
+			case 'static':
+				trg.style.position = 'relative';
+			case 'relative':
+			case 'absolute':
+				var ev_pageX = ev.pageX || (ev.clientX+document.documentElement.scrollLeft);
+				var ev_pageY = ev.pageY || (ev.clientY+document.documentElement.scrollTop);
+				trg.style.left = start_params[2]+ev_pageX-base_point[0]+'px';
+				trg.style.top = start_params[3]+ev_pageY-base_point[1]+'px';
+				break;
+		}
+		
+		if(ev.stopPropagation) ev.stopPropagation();
+		else ev.cancelBubble = true;
+	}
+
+	// .win [mouseup]
+	if(ev.type == 'mouseup' && win_onmouse.win) {
+		var win = win_onmouse.win; 
+		
+		// сохраним параметры окна, если указано где
+		if(win.dataset.winSettingsLocalStorage) {
+			var key = win.dataset.winSettingsLocalStorage;
+			var win_settings = JSON.parse(localStorage[key]||'{}') || {};
+			win_settings.height = parseInt(win.style.height);
+			win_settings.width = parseInt(win.style.width);
+			win_settings.top = parseInt(win.top);
+			win_settings.left = parseInt(win.left);
+			localStorage[key] = JSON.stringify(win_settings);
+		}
+		
+		delete win_onmouse.win;
+		delete win_onmouse.startPoint;
+		delete win_onmouse.startParams;
+		
+		document.ondragstart = null;
+		document.body.onselectstart = null; // IE8
+	}
+	
+	// .win-resizer [mousedown]
+	if(ev.type == 'mousedown' && trg1.className.indexOf('win-resizer') > -1) {
+		
+		// стартовые кординаты мыши
+		trg1.mousedownPoint = [(ev.pageX || (ev.clientX+document.documentElement.scrollLeft)), (ev.pageY || (ev.clientY+document.documentElement.scrollTop))];
+		delete trg1.startSize;
+		
+		win_onmouse.win_resizer = trg1;
+		
+		// запретим выделение
+		document.body.onselectstart = function() { return false } // old IE
+		document.ondragstart = function(){ return false; } // old browsers
+		ev.preventDefault();
+	}
+	
+	// .win-resizer [mousemove]
+	if(ev.type == 'mousemove' && win_onmouse.win_resizer) {
+		var trg = win_onmouse.win_resizer || trg1;
+		var parent_div = trg.parentNode;
+		var ev_pageX = ev.pageX || (ev.clientX+document.documentElement.scrollLeft);
+		var ev_pageY = ev.pageY || (ev.clientY+document.documentElement.scrollTop);
+		
+		var start_point = trg.mousedownPoint;
+		if(!start_point) trg.mousedownPoint = (start_point = [ev_pageX||0, ev_pageY||0]);
+			
+		var start_size = trg.startSize;
+		if(!start_size) trg.startSize = (start_size = [trg.parentNode.offsetWidth, trg.parentNode.offsetHeight]);
+		
+		// новая ширина, но не менее минимальной у окна если задана
+		var new_width = parseInt((trg.parentNode.currentStyle || window.getComputedStyle(trg.parentNode, null)).minWidth||'0');
+
+		new_width = Math.max(new_width, parseInt(start_size[0]) + (ev_pageX||0) - parseInt(start_point[0]));
+		
+		var new_height = Math.max(0, parseInt(start_size[1]) + (ev_pageY||0) - parseInt(start_point[1]));
+		
+		parent_div.style.width = new_width + 'px';
+		parent_div.style.height = new_height + 'px';
+	}
+	
+	// [winresize] ?
+	if(ev.type == 'winresize' /*&& trg1.className.indexOf('win-resizer') > -1*/) {
+		var parent_div = trg1;
+		var new_width = ev.width || ev.new_width || parseInt(parent_div.style.width || (parent_div.offsetWidth+''));
+		var new_height = ev.height || ev.new_height || parseInt(parent_div.style.height || (parent_div.offsetHeight+''));
+
+		parent_div.style.width = new_width + 'px';
+		parent_div.style.height = new_height + 'px';
+		
+		parent_div.dispatchEvent(new Event('resize'));
+	}
+	
+	// .win-resizer [mouseup]
+	if((ev.type == 'mouseup' || ev.type == 'mouseout-window') && win_onmouse.win_resizer) 
+	{
+		var win = trg1.parentNode;
+		
+		// сохраним параметры окна, если указано где
+		if(win.dataset.winSettingsLocalStorage) {
+			var key = win.dataset.winSettingsLocalStorage;
+			var win_settings = JSON.parse(localStorage[key]||'{}') || {};
+			win_settings.height = parseInt(win.style.height);
+			win_settings.width = parseInt(win.style.width);
+			localStorage[key] = JSON.stringify(win_settings);
+		}
+		
+		delete win_onmouse.win_resizer.startSize;
+		delete win_onmouse.win_resizer.mousedownPoint;
+		delete win_onmouse.win_resizer;
+		
+		win.dispatchEvent(new Event('resize'));
+	}
+	
+	// .win-minimize-btn, .win-minimize-button
+	if(ev.type == 'mouseup' && (trg1.className.indexOf('win-minimize-btn') > -1 || trg1.className.indexOf('win-minimize-button') > -1)) {
+		var trg = trg1.parentNode;
+		while(trg.parentNode.className.indexOf('win') > -1) trg = trg.parentNode;
+		trg.className += " win-is-hidden";
+	}
+	
+	// [winshow]
+	if(ev.type == 'winshow') {
+		if(!document.querySelector('style#win-css'))
+			win_onmouse({type: 'init_win_css'});
+		
+		// восстановим положение и размеры окна
+		if(trg1.dataset.winSettingsLocalStorage) {
+			var key = trg1.dataset.winSettingsLocalStorage;
+			var win_settings = JSON.parse(localStorage[key]||'{}') || {};
+console.log(JSON.stringify(win_settings));
+			trg1.height = win_settings.height;
+			trg1.width = win_settings.width;
+			trg1.top = win_settings.top;
+			trg1.left = win_settings.left;
+			if(ev['position']) delete ev['position'];
+		}
+		
+		if(trg1.className.indexOf('win-is-hidden') > -1)
+			trg1.className = trg1.className.replace(/win-is-hidden( |$)/,'');
+		
+		if(!ev['position'] || ev.position == 'center' || ev.position == 'center center') {
+			trg1.style.left = (window.innerWidth - trg1.offsetWidth) / 2 + 'px';
+			trg1.style.top = (window.innerHeight - trg1.offsetHeight) / 2 + 'px';
+		}
+		
+		if(ev['with_background']) {
+			var cover = document.getElementById('win_backcover') || document.createElement('DIV');
+			cover.style.cssText = 'height: 100%;left:0;position:fixed;top:0;width:100%;z-index: 98;background:'+(typeof ev['with_background'] == 'boolean' ? 'rgba(0, 0, 0, 0.7)' : ev['with_background']);
+			
+			if( ! cover.id) {
+				cover.id = 'win_backcover';
+				document.body.appendChild(cover);
+			}
+		}
+	}
+	
+	// .win-close-btn, .win-close-button
+	if(ev.type == 'mouseup' && (trg1.className.indexOf('win-close-btn') > -1 || trg1.className.indexOf('win-close-button') > -1)) {
+		var trg = trg1;
+		while(trg.parentNode.className.indexOf('win') > -1) 
+			trg = trg.parentNode;
+		
+		return win_onmouse({type:'winclose', target: trg});
+	}
+	
+	// [winclose]	
+	if(ev.type == "winclose") 
+	{
+		var win = trg1;
+		
+		// удалим связанную кнопку с этим окном
+		if (win.button && win.button.parentNode)
+			win.button.parentNode.removeChild(win.button);
+		
+		// удалим окно
+		win.parentNode.removeChild(win);
+		
+	}
+	
+	// .win-splitter [mousedown]
+	if(ev.type == 'mousedown' && trg1.className.indexOf('win-splitter') > -1) {
+		
+		// стартовые кординаты мыши
+		trg1.mousedownPoint = [(ev.pageX || (ev.clientX+document.documentElement.scrollLeft)), (ev.pageY || (ev.clientY+document.documentElement.scrollTop))];
+		
+		// стартовое положение
+// 		trg1.startLeftTop = [parseInt(trg1.style.left), parseInt(trg1.style.top)];
+		
+		// стартовые размеры
+		trg1.prevSize = [trg1.previousElementSibling.offsetWidth, trg1.previousElementSibling.offsetHeight];
+		trg1.nextSize = [trg1.nextElementSibling.offsetWidth, trg1.nextElementSibling.offsetHeight];
+		
+		// найдём родительское окно
+		for(trg1.win = trg1.parentNode; 
+			!trg1.win.className.match(/win( |$)/); 
+			trg1.win = trg1.win.parentNode)
+			if(trg1.win.parentNode.nodeType != 1) break;
+
+		// сгенерируем уникальный id если нет
+		trg1.id ? trg1.id : (trg1.id = trg1.win.id+'_splitter'+(new Date())*1);
+			
+		// запомним, кого мы перетаскиваем
+		win_onmouse.dragging_splitter = trg1;
+			
+		// запретим выделение
+		document.body.onselectstart = function() { return false }
+		document.ondragstart = function(){ return false; }
+		
+		// подавляем начало выделения мышью
+		if(ev.preventDefault) ev.preventDefault();
+		else ev.returnValue = false;
+	}
+
+	// .win-splitter [mousemove]
+	if(ev.type == 'mousemove' && win_onmouse['dragging_splitter']) 
+	{
+		var ev_pageX = ev.pageX || (ev.clientX+document.documentElement.scrollLeft);
+		var ev_pageY = ev.pageY || (ev.clientY+document.documentElement.scrollTop);
+	
+		var trg = win_onmouse['dragging_splitter'];
+		var mousedown_point = trg.mousedownPoint || [ev_pageX||0, ev_pageY||0];
+		
+		var prev = trg.previousElementSibling;
+		var next = trg.nextElementSibling;
+		var is_updown = trg.className.indexOf('type_horizontal') > -1;
+		
+		var next_style = undefined;
+		if (!next.start_flex) {
+			if(next.style.webkitBoxFlex || next.style.flexGrow) 
+				next.start_flex = next.style.webkitBoxFlex || next.style.flexGrow;
+			else {
+				var next_style = next.currentStyle || window.getComputedStyle(next, null);
+				next.start_flex = next_style.webkitBoxFlex || next_style.flexGrow;
+			}
+console.log("next.start_flex="+next.start_flex);
+		}
+		if (is_updown && !next.start_size) {
+			if(next.style.height !== '')
+				next.start_size = parseInt(next.style.height);
+			else {
+				var next_style = next_style || next.currentStyle || window.getComputedStyle(next, null);
+				next.start_size = parseInt(next_style.height);
+			}
+console.log("next.start_size="+next.start_size);
+		}
+		else if(!is_updown && !next.start_size) {
+			if(next.style.width !== '')
+				next.start_size = parseInt(next.style.width);
+			else {
+				next_style = next.currentStyle || window.getComputedStyle(next, null);
+				next.start_size = parseInt(next_style.width);
+			}
+console.log("next.start_size="+next.start_size);
+		}
+		var prev_style = undefined;
+		if (!prev.start_flex) {
+			if(prev.style.flex || prev.style.webkitBoxFlex) 
+				prev.start_flex = prev.style.flexGrow || prev.style.webkitBoxFlex;
+			else {
+				var prev_style = prev_style || prev.currentStyle || window.getComputedStyle(prev, null);
+				prev.start_flex = prev_style.flexGrow || prev_style.webkitBoxFlex;
+			}
+console.log("prev.start_flex="+prev.start_flex);
+		}
+		if (is_updown && !prev.start_size) {
+			if(prev.style.height !== '')
+				prev.start_size = parseInt(prev.style.height);
+			else {
+				var prev_style = prev_style || prev.currentStyle || window.getComputedStyle(prev, null);
+				prev.start_size = parseInt(prev_style.height);
+			}
+console.log("prev.start_size="+prev.start_size);
+		}
+		else if (!is_updown && !prev.start_size) {
+			if(prev.style.width !== '')
+				prev.start_size = parseInt(prev.style.width);
+			else {
+				var prev_style = prev_style || prev.currentStyle || window.getComputedStyle(prev, null);
+				prev.start_size = parseInt(prev_style.width);
+			}
+console.log("prev.start_size="+prev.start_size);
+		}
+		
+		// вверх/вниз
+		if(is_updown) 
+		{
+			// вычесляем отклонение
+			var delta_y = ev_pageY - mousedown_point[1];
+			if (delta_y > 0) {  // вниз
+				var next_k = Math.abs(trg.nextSize[1]-delta_y) / trg.nextSize[1];
+				var prev_k = Math.abs(trg.prevSize[1]+delta_y) / trg.prevSize[1];
+			}
+			else {
+				var next_k = Math.abs(trg.nextSize[1]-delta_y) / trg.nextSize[1];
+				var prev_k = Math.abs(trg.prevSize[1]+delta_y) / trg.prevSize[1];
+			}
+// console.log(next_k, prev_k);
+// next.innerHTML = next_k; prev.innerHTML = prev_k; prev.parentNode.firstElementChild.innerHTML = delta_y;
+
+			if (next.start_flex) {
+				next.style.flex = next.start_flex * next_k;
+				next.style.webkitBoxFlex = next.start_flex * next_k;
+			}
+			else {
+				next.style.height = next.start_size * next_k + 'px';
+			}
+			if (prev.start_flex) {
+				prev.style.flex = prev.start_flex * prev_k;
+				prev.style.webkitBoxFlex = prev.start_flex * prev_k;
+			}
+			else {
+				prev.style.height = prev.start_size * prev_k + 'px';
+			}
+		}
+		// влево/вправо
+		else {
+			// вычесляем отклонение
+			var delta_x = ev_pageX - mousedown_point[0];
+			if (delta_x > 0) {  // вправо
+				var next_k = Math.abs(trg.nextSize[0]-delta_x) / trg.nextSize[0];
+				var prev_k = Math.abs(trg.prevSize[0]+delta_x) / trg.prevSize[0];
+			}
+			else {
+				var next_k = Math.abs(trg.nextSize[0]-delta_x) / trg.nextSize[0];
+				var prev_k = Math.abs(trg.prevSize[0]+delta_x) / trg.prevSize[0];
+			}
+// next.innerHTML = next_k; prev.innerHTML = prev_k; prev.parentNode.parentNode.firstElementChild.innerHTML = delta_x;
+			if (next.start_flex) {
+				next.style.flex = next.start_flex * next_k;
+				next.style.webkitBoxFlex = next.start_flex * next_k;
+			}
+			else {
+				next.style.width = next.start_size * next_k + 'px';
+			}
+			if (prev.start_flex) {
+				prev.style.flex = prev.start_flex * prev_k;
+				prev.style.webkitBoxFlex = prev.start_flex * prev_k;
+			}
+			else {
+				prev.style.width = prev.start_size * prev_k + 'px';
+			}
+		}
+		
+	}
+	
+	// .win-splitter [mouseup][mouseout]
+	if((ev.type == 'mouseup' || ev.type == 'mouseout-window') && win_onmouse['dragging_splitter']) {
+		delete win_onmouse.dragging_splitter.nextElementSibling.start_size;
+		delete win_onmouse.dragging_splitter.nextElementSibling.start_flex;
+		delete win_onmouse.dragging_splitter.previousElementSibling.start_size;
+		delete win_onmouse.dragging_splitter.previousElementSibling.start_flex;
+		delete win_onmouse.dragging_splitter;
+	}
+	
+}
+
+document.documentElement.addEventListener("mousedown", win_onmouse);
+document.documentElement.addEventListener("mousemove", win_onmouse);
+document.documentElement.addEventListener("mouseup", win_onmouse);
+document.documentElement.addEventListener("mouseout", win_onmouse);
+// document.documentElement.addEventListener("mouseover", win_onmouse);
+
+jsdbg_ide_onclick.css_styles = 
+".cmd_code_editor_debugger > i {  background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCI+CiAgICA8cGF0aCBkPSJNIDguOTA2MjUgMiBMIDcuNzE4NzUgMy41OTM3NSBMIDkuMjUgNC43NSBDIDkuMDgzOTE2NyA1LjEyNzc5NjkgOSA1LjU0OTE0NjkgOSA2IEwgMTUgNiBDIDE1IDUuNTY0OTExIDE0LjkzNjQ2OSA1LjE0ODg0OSAxNC43ODEyNSA0Ljc4MTI1IEwgMTYuMzQzNzUgMy42MjUgTCAxNS4xNTYyNSAyIEwgMTMuMzc1IDMuMzQzNzUgQyAxMi45NjIzMTYgMy4xMzU0MTU5IDEyLjUwODIzNCAzIDEyIDMgQyAxMS41MDc1MyAzIDExLjA1OTcwNSAzLjExNjE4OSAxMC42NTYyNSAzLjMxMjUgTCA4LjkwNjI1IDIgeiBNIDggNyBDIDcuNDQ1NTkzOSA3IDYuOTU2OTI3NyA3LjY3ODM5MjkgNi41OTM3NSA4Ljc4MTI1IEwgNC4xNTYyNSA3LjM3NSBMIDMuMTU2MjUgOS4wOTM3NSBMIDYuMTI1IDEwLjgxMjUgQyA2LjAzNjUxODUgMTEuNDg4NDE2IDYgMTIuMjMyODUxIDYgMTMgTCAzIDEzIEwgMyAxNSBMIDYuMTI1IDE1IEMgNi4yNDIyMDE3IDE1Ljc5NzI3OSA2LjQzOTA0NTcgMTYuNDgxMzQ0IDYuNjg3NSAxNy4wNjI1IEwgNC4wOTM3NSAxOS4wMzEyNSBMIDUuMzEyNSAyMC42MjUgTCA3Ljc4MTI1IDE4Ljc1IEMgOC42NzI0NzAzIDE5LjY3OTAzOSA5LjgyMjE1NTIgMjAuMTg2MDM0IDExIDIwLjU5Mzc1IEwgMTEgMTMgTCAxMyAxMyBMIDEzIDIwLjY4NzUgQyAxNC40NDM3NSAyMC4yNSAxNS41ODMzNzQgMTkuNzc2ODA3IDE2LjQwNjI1IDE4LjkwNjI1IEwgMTguNzE4NzUgMjAuNjU2MjUgTCAxOS45Mzc1IDE5LjA5Mzc1IEwgMTcuNDM3NSAxNy4xNTYyNSBDIDE3LjY1NjQ0MiAxNi41NTI0ODMgMTcuNzgzOTc3IDE1Ljg0ODM5IDE3Ljg3NSAxNSBMIDIxIDE1IEwgMjEgMTMgTCAxOCAxMyBDIDE4IDEyLjIwODk1NiAxNy45Mzc1MzggMTEuNDQzMTY2IDE3Ljg0Mzc1IDEwLjc1IEwgMjAuNzUgOS4wNjI1IEwgMTkuNzUgNy4zMTI1IEwgMTcuMzc1IDguNjg3NSBDIDE3LjAxNDY1NiA3LjY0MjgyMDggMTYuNTM3NjAyIDcgMTYgNyBMIDggNyB6Ii8+Cjwvc3ZnPgo=') !important; margin-right: 1px; background-size: 20px 20px; }\n"+
+
+".ico-add-brk { margin-right: 1px; background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjIwIiB3aWR0aD0iMjAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj4KPHBhdGggZD0ibTEuMTIzMSA5LjM5NzZoMTEuMzIxbDIuNjgwNiAzLjAyNS0yLjY4MDYgMi45MzUxaC0xMS4zMjF6Ii8+CjxwYXRoIGQ9Im0xNC4xMTcgNi4zODU1aDIuMDEwNnYtMS45OTMyaC45ODc5NHYxLjk5MzJoMi4wMDE5di45OTY2MWgtMi4wMDE5djIuMDE5MmgtLjk4Nzk0di0yLjAxOTJoLTIuMDEwNnoiLz4KPC9zdmc+Cg==') !important; }\n"+
+
+".ico-eye { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cGF0aCBkPSJtMTAgNC41NDU1Yy0zLjYzNjQgMC02Ljc0MTggMi4yNjE4LTggNS40NTQ1IDEuMjU4MiAzLjE5MjcgNC4zNjM2IDUuNDU0NSA4IDUuNDU0NXM2Ljc0MTgtMi4yNjE4IDgtNS40NTQ1Yy0xLjI1ODItMy4xOTI3LTQuMzYzNi01LjQ1NDUtOC01LjQ1NDV6bTAgOS4wOTA5Yy0yLjAwNzMgMC0zLjYzNjQtMS42MjkxLTMuNjM2NC0zLjYzNjRzMS42MjkxLTMuNjM2NCAzLjYzNjQtMy42MzY0IDMuNjM2NCAxLjYyOTEgMy42MzY0IDMuNjM2NC0xLjYyOTEgMy42MzY0LTMuNjM2NCAzLjYzNjR6bTAtNS44MTgyYy0xLjIwNzMgMC0yLjE4MTguOTc0NTUtMi4xODE4IDIuMTgxOCAwIDEuMjA3My45NzQ1NSAyLjE4MTggMi4xODE4IDIuMTgxOCAxLjIwNzMgMCAyLjE4MTgtLjk3NDU1IDIuMTgxOC0yLjE4MTggMC0xLjIwNzMtLjk3NDU1LTIuMTgxOC0yLjE4MTgtMi4xODE4eiIvPjwvc3ZnPgo=') !important; margin: 0 2px 0 -4px; }\n"+
+
+".cmd_code_editor_start_debug > i { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjE4IiB3aWR0aD0iMTgiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDI0IDI0Ij4KPHBhdGggZD0ibTYuNjc5NyAxLjA3NjJsLS44OTA2IDEuMTk1MyAxLjE0ODQuODY3MmMtLjEyNDYuMjgzMy0uMTg3NS41OTkzLS4xODc1LjkzNzVoNC41YzAtLjMyNjMtLjA0OC0uNjM4NC0uMTY0LS45MTQxbDEuMTcyLS44NjcyLS44OTEtMS4yMTg3LTEuMzM2IDEuMDA3OGMtLjMwOTMtLjE1NjMtLjY0OTgtLjI1NzgtMS4wMzEtLjI1NzgtLjM2OTQgMC0uNzA1Mi4wODcxLTEuMDA3OC4yMzQzbC0xLjMxMjUtLjk4NDN6bS0uNjc5NyAzLjc1Yy0uNDE1OCAwLS43ODIzLjUwODgtMS4wNTQ3IDEuMzM1OWwtMS44MjgxLTEuMDU0Ny0wLjc1IDEuMjg5MSAyLjIyNjYgMS4yODljLS4wNjY0LjUwNzAtLjA5MzggMS4wNjUzLS4wOTM4IDEuNjQwN2gtMi4yNXYxLjQ5OThoMi4zNDM4Yy4wODc5LjU5OC4yMzU1IDEuMTExLjQyMTggMS41NDdsLTEuOTQ1MyAxLjQ3Ny45MTQxIDEuMTk1IDEuODUxNS0xLjQwNmMuNjY4NS42OTYgMS41MzA3IDEuMDc3IDIuNDE0MSAxLjM4MnYtNi4wNjJoMS41di4wMDk4bDMuOTE2IDEuODU3MmgyLjA4NHYtMS40OTk4aC0yLjI1YzAtLjU5MzMtLjA0Ny0xLjE2NzctLjExNy0xLjY4NzVsMi4xNzktMS4yNjU3LS43NTAtMS4zMTI1LTEuNzgxIDEuMDMxM2MtLjI3MC0uNzgzNS0uNjI4LTEuMjY1Ni0xLjAzMS0xLjI2NTZoLTZ6IiB0cmFuc2Zvcm09InNjYWxlKDEuMzMzMykiLz4KPHBhdGggZD0ibTIxLjc4NiAxOC40NS05LjMzMzMtNS4zMzMzdjEwLjY2NyIvPgo8L3N2Zz4K') !important; }\n"+
+
+".cmd_code_editor_show_class_browser > i { margin: 0 2px 0 -4px; background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCAyMCAyMCI+PHBhdGggZD0ibSAyLjAxODUsMTYgMTUuOTYzLDAgMCwtNi4wOTIzNTQxIC0xNS45NjMsMCB6IG0gMCwtNy42MDkwOTU5IDcuMTk4MjgxNSwwIEwgOS4yMTY3ODE1LDQgMi4wMTg1LDQgWiBNIDEwLjgyNjIxOSw0IGwgMCw0LjM5MDkwNDEgNy4xNTUyODEsMCBMIDE3Ljk4MTUsNCBaIi8+PC9zdmc+Cg==') !important; }\n"+
+
+".ico-discard { background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH3wsdFwII35vlTAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAmUlEQVQY023PsQ2CQBQG4I8LvYPYkLgArRXBCbR0Kp0AYkXLCDQkdG5g4gJg4RkJub+6vPte8r8Mjqf6hgJl17TvONuhx9A17SWL6OybAWV893EZ7jkO/ikisEJwCKgxbvAajagDnqg2eI0qPEPXtDNeWBJwwatr2jlbXVdIZ0AZEmhMdO4DpkSnbecpxxUB+1/x+FnhEReuH/OUL1Zkgg+nAAAAAElFTkSuQmC') !important; }"+
+
+".ico-save { background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAYAAABy6+R8AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAB3RJTUUH4AcFCy4mijH+MAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAvklEQVQoz2OcM2eOZ19v77YfP34w8PDwMDAzMzOgg1+/fjFISEgwbNy0iY+bm5uBQU5W9r+IsPB/EWHh/+fPn/+PDcyfP/+/iLDw//i4uP///v1jY/r27RsDLuDi7Mzg4uwM52/dupWhv69vKhMDiWDbtm0pJGtiYGBgQNF0/do1FMk9e/cy7N6zh+HG9eso4owiwsL/SbFFX1+fgXLnDUJNHBwcJGng4ORkYCqvqAhiZ2cnSoOAgABDdnZ2KgCnNkvad65KiwAAAABJRU5ErkJggg==') !important; }"+
+
+".ico-play { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyLjgybW0iIGhlaWdodD0iMi44Mm1tIiB2aWV3Qm94PSIwIDAgMTAgMTAiPjxwYXRoIGQ9Im0gMTAsNSAtMTAsLTUgMCwxMCIvPjwvc3ZnPgo=') !important; }"+
+
+".ico-plus { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cGF0aCBkPSJtMTAuNzY3IDVoLTEuNTM0djQuMjMzaC00LjIzM3YxLjUzNGg0LjIzM3Y0LjIzM2gxLjUzNHYtNC4yMzNoNC4yMzN2LTEuNTM0aC00LjIzM3YtNC4yMzN6Ii8+PC9zdmc+Cg==') !important; }"+
+
+".cmd_code_editor_restart > i { margin: 0 -4px; background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cGF0aCBkPSJtMTAgMy40MTQydjJjLTIuNzYgMC01IDIuMjQtNSA1czIuMjQgNSA1IDUgNS0yLjI0IDUtNWgtMS44NGMtLjA0IDEuNzItMS40MyAzLjA5LTMuMTYgMy4wOS0xLjc1IDAtMy4xNi0xLjQtMy4xNi0zLjE1czEuNDEtMy4xNiAzLjE2LTMuMTZ2Mi4yMmw0LjUtMy00LjUtM3oiLz48L3N2Zz4K') !important; }\n"+
+
+".ico-step_over { margin: 0 -4px; background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1LjAxNDA4OTZtbSIgaGVpZ2h0PSIyLjcyNDk5MDFtbSIgdmlld0JveD0iMCAwIDE3Ljc2NjQ1OSA5LjY1NTQ3NjgiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEuMTg3NTc3NWUtOCwtMTA0Mi43MDY3KSI+PHBhdGggZD0ibSA1Ljk0NjQ1OTQsMTA0OS44NjIyIGMgMCwxLjEgMC45LDIgMiwyIDEuMSwwIDIsLTAuOSAyLC0yIDAsLTEuMSAtMC45LC0yIC0yLC0yIC0xLjEsMCAtMiwwLjkgLTIsMiIgaWQ9InBhdGgzNjEzIi8+PHBhdGggZD0ibSAxLjE5NjQ1OTQsMTA1MC4zOTIyIGMgMi41NSwtOC40MyAxMS4zOTk5OTk2LC04LjczIDEzLjkzOTk5OTYsMCIgc3R5bGU9ImZpbGw6bm9uZTtzdHJva2U6IzAwMDAwMDtzdHJva2Utd2lkdGg6Mi41Ii8+PHBhdGggZD0ibSAxNS42MjY0NTksMTA1Mi4zNjIyIC00LjU0LC0yLjc2IDYuNjgsLTIuMSIvPjwvZz48L3N2Zz4K') !important; }"+
+
+".ico-step_out { margin: 0 -4px; background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyLjU0bW0iIGhlaWdodD0iMy42NjhtbSIgdmlld0JveD0iMCAwIDguOTkgMTMiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEuMTg3NTc3M2UtOCwtMTAzOS4zNjIyKSI+PHBhdGggZD0ibSAyLjUsMTA1MC4zNjIyIGMgMCwxLjEgMC45LDIgMiwyIDEuMSwwIDIsLTAuOSAyLC0yIDAsLTEuMSAtMC45LC0yIC0yLC0yIC0xLjEsMCAtMiwwLjkgLTIsMiIvPjxwYXRoIGQ9Im0gNC41LDEwMzkuMzYyMiAtNC41MCw0IEwgMywxMDQzLjM2MjIgbCAwLDQgMywwIDAsLTQgMywwIC00LjUsLTQgeiIvPjwvZz48L3N2Zz4K') !important; }"+
+
+".ico-step_in { margin: 0 -4px; background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyLjU0bW0iIGhlaWdodD0iMy42NjhtbSIgdmlld0JveD0iMCAwIDguOTkgMTMiPjxwYXRoIGQ9Ik0gMi40OSwxMC45OSBDIDIuNDksMTIuMDkgMy4zOSwxMyA0LjQ5LDEzIGMgMS4xLDAgMiwtMC45IDIsLTIuMDAwNDg1IDAsLTEuMTAgLTAuOTAsLTIgLTIsLTIgLTEuMSwwIC0yLDAuOSAtMiwyIi8+PHBhdGggZD0ibSAyLjk5LDAgMCw0IC0zLDAgNC41LDQgNC41LC00IC0zLDAgMCwtNCAtMywwIHoiLz48L3N2Zz4K') !important; }"+
+
+".ico-replay { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2ZXJzaW9uPSIxLjEiIHZpZXdCb3g9IjAgMCAyMCAyMCI+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDIuMTY5NSAxLjgzMDUpIj4KPHBhdGggZD0ibTIuNTg1OCAxMy44OTFjLTEuNTg5OC0xLjQ2Mi0yLjU4NTgtMy41Ni0yLjU4NTgtNS44OTEgMC00LjQyIDMuNTgtOCA4LThzOCAzLjU4IDggOC0zLjU4IDgtOCA4di0xLjZjMy41MjggMCA2LjQtMi44NzIgNi40LTYuNHMtMi44NzItNi40LTYuNC02LjQtNi40IDIuODcyLTYuNCA2LjRjMCAxLjkzNTcuODY0NjEgMy42NzQgMi4yMjc4IDQuODQ4N2wxLjY5MjUtMS40Mi4wMTUxIDQuNDYzLTQuMzkyNS0uNzkwIDEuNDQyOS0xLjIxMXptMy45MjA5LTIuNDYyIDQuNTcxMy0zLjQyOS00LjU3MTMtMy40Mjg2djYuODU3MXoiLz48L2c+Cjwvc3ZnPgo=') !important; }"+
+
+".ico-cog { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cGF0aCBkPSJtMTAuMTA0IDEyLjE3MmMtMS4xOCAwLTIuMTMtLjk2LTIuMTMtMi4xMyAwLTEuMTguOTYtMi4xMyAyLjEzLTIuMTMgMS4xOCAwIDIuMTMuOTYgMi4xMyAyLjEzIDAgMS4xOC0uOTYgMi4xMy0yLjEzIDIuMTNtOC0zLjczLTIuOTMtLjUzIDEuNzItMi4zOS0yLjI2LTIuMjYtMi40NiAxLjc5LS40Ny0zaC0zLjJsLS40IDMuMTMtMi41My0xLjkyLTIuMjYgMi4yNiAxLjk5IDIuNTktMy4yLjMzdjMuMmwzLjMzLjMzLTIuMTIgMi41OSAyLjI2IDIuMjYgMi41My0yLjEyLjQgMy4zM2gzLjJsLjQtMy4yIDIuNTMgMS45OSAyLjI2LTIuMjYtMS43OS0yLjQ1IDMtLjQ3di0zLjJ6Ii8+PC9zdmc+Cg==') !important; }"+
+		
+".c-toolbar { background: white; border: 1px solid #ddd; box-sizing: border-box; white-space: nowrap; overflow-y: hidden; }"+
+".c-toolbar-btn { display: inline-block; vertical-align: top; height: 22px; margin: 1px; border: none; background: transparent; line-height: 20px; }"+
+".c-toolbar-btn:hover { background: silver; cursor: pointer; }"+
+".c-toolbar-btn > i, .ico-apply { background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAALCAYAAACksgdhAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH3wsdFwECFGNfkQAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAqklEQVQoz5XRPU4CYRAG4OcDeiylpLAgFHgEWmkUTmBjjUcgnICT7EK1lHsEGiKFicZ4gb0A2owF8pPlbed9kslMUiMPk3EbC7wWWV6lmqDEPTYYNq8AcItOugLAFqNWFAaY4bnI8uoCeMR3ClDiJnZ+wvIM+CiyfN/CPIAofv7b9ABAA9MYnMoR+ENfMdjWAZDiEA10sUL/EoAmvL/tfu56vQrr+MXLOQC/RH9Eb3kwTjIAAAAASUVORK5CYII='); background-position: 50% 50%; background-repeat: no-repeat; display: inline-block; width: 20px; height: 20px; vertical-align: bottom; }"+
+".c-toolbar-select, .c-toolbar-input { display: inline-block; vertical-align: top; height: 22px; margin: 1px; background: transparent; line-height: 20px; }"+
+".c-toolbar-divider { width: 1px; margin: 1px 1px; overflow: hidden; background-color: #e5e5e5; height: 20px; display: inline-block; vertical-align: middle; }\n"+
+
+"#jsdbg_ide_main_window_show_hide { position:absolute; right: 0; top: 0; width: 30px; height: 25px;  border: none; border-left: 1px solid #e5e5e5; /* background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCIgdmVyc2lvbj0iMS4xIj48cGF0aCBkPSJtIDE1LDYuMzI5OTk5OCAtMS4zMywtMS4zMyAtMy42NywzLjY3IC0zLjY2OTk5OTksLTMuNjcgLTEuMzMsMS4zMyAzLjY3LDMuNjcwMDAwMiAtMy42NywzLjY3IDEuMzMsMS4zMyBMIDEwLDExLjMzIDEzLjY3LDE1IDE1LDEzLjY3IDExLjMzLDEwIDE1LDYuMzI5OTk5OCBaIiAvPjwvc3ZnPgo=') 50% 50% no-repeat; */ background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cmVjdCB5PSIxMyIgeD0iNCIgd2lkdGg9IjEyIiByeT0iMCIgaGVpZ2h0PSIyIiAvPjwvc3ZnPgo=') 50% 50% no-repeat; }"+
+"#jsdbg_ide_main_window_show_hide:hover { background-color: silver; } "+
+
+".cmd_code_editor_continue > i { margin: 0 -4px; }"+
+".cmd_code_editor_next_step > i { margin: 0 -4px; background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyLjU0bW0iIGhlaWdodD0iMy42NjhtbSIgdmlld0JveD0iMCAwIDguOTkgMTMiPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEuMTg3NTc3M2UtOCwtMTAzOS4zNjIyKSI+PHBhdGggZD0ibSAyLjUsMTA1MC4zNjIyIGMgMCwxLjEgMC45LDIgMiwyIDEuMSwwIDIsLTAuOSAyLC0yIDAsLTEuMSAtMC45LC0yIC0yLC0yIC0xLjEsMCAtMiwwLjkgLTIsMiIvPjxwYXRoIGQ9Im0gMywxMDM5LjM2MjIgMCw0IC0zLDAgTCA0LjUsMTA0Ny4zNjIyIGwgNC41LC00IC0zLDAgMCwtNCAtMywwIHoiLz48L2c+PC9zdmc+Cg=='); }\n"+
+
+"#jsdbg_ide_main_window_show { /* position:fixed; right: 2px; bottom: 2px; display: block;*/ }"+
+
+"#ide_main_window_settings { position:absolute; right: 0px; top: 0px; border: none; border-left: 1px solid #e5e5e5; padding-left: 3px; padding-right: 3px; }"+
+"#ide_main_window_settings:hover, #ide_main_window_settings:hover > i { background-color: silver; opacity: 1; }"+
+"#ide_main_window_settings > i { opacity: 0.2; width: 18px; }\n"+
+
+".c-code_editor-bg, .c-code_editor-textarea { font: 13px/16px monospace; padding: 2px; margin:0; border: 1px solid silver; -moz-box-sizing:border-box; box-sizing: border-box; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }"+
+
+"#ide_main_window_src { height:100%; width:100%; border-top:26px solid transparent; display:block; background:transparent; position:relative; }\n"+
+
+".ace_editor { height:100%; width:100%; margin: 0; }\n"+
+"#ide_main_window > .ace_editor { border-top:26px solid transparent; display:block; }\n"+
+".jsdbg-ide-class-browser .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
+".jsdbg-ide-debugger .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
+
+".jsdbg-ide-class-browser optgroup.selected { }\n"+
+
+".dbg_readonly_code .c-code_editor { background-color: #ffa; }\n"+
+".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }";
+"";
+
+win_onmouse.win_css_styles = 
+".win { display: flex; display: -webkit-box; flex-direction: column; -webkit-box-orient: vertical; -webkit-box-align: stretch; -webkit-box-pack: justify; box-sizing: border-box; -moz-box-sizing: border-box; position: fixed; left: 0; top: 0; min-width: 32px; min-height: 32px; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,0.7); z-index: 99;font:12px/14px arial,helvetica,tahoma,sans-serif; border-radius:0; }"+
+".win-is-hidden { display: none!important; }"+
+".win-area { -webkit-box-flex: 1.0; flex: 1; }"+
+".win-header { padding: 15px 20px; font:normal 16px Arial,Helvetica,sans-serif; cursor: default; -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: -moz-none; -ms-user-select: none; user-select: none; }"+
+".win-header-title { border-bottom: 1px solid #b7b6b1; color:#6f6563; padding: 15px 20px 10px; }"+
+".win-close-btn, .win-close-btn:hover { position:absolute; top:0px; right:0px; width:20px; height:20px; text-indent:-1000em; overflow:hidden; background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCIgdmVyc2lvbj0iMS4xIj48cGF0aCBkPSJtIDE1LDYuMzI5OTk5OCAtMS4zMywtMS4zMyAtMy42NywzLjY3IC0zLjY2OTk5OTksLTMuNjcgLTEuMzMsMS4zMyAzLjY3LDMuNjcwMDAwMiAtMy42NywzLjY3IDEuMzMsMS4zMyBMIDEwLDExLjMzIDEzLjY3LDE1IDE1LDEzLjY3IDExLjMzLDEwIDE1LDYuMzI5OTk5OCBaIiAvPjwvc3ZnPgo=') 50% 50% no-repeat; border: 12px solid transparent; border-left-width: 2px; }"+
+".win-minimize-btn { position:absolute; top:0px; right:34px; width:20px; height:20px; text-indent:-1000em; overflow:hidden; background: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cmVjdCB5PSIxMyIgeD0iNCIgd2lkdGg9IjEyIiByeT0iMCIgaGVpZ2h0PSIyIiAvPjwvc3ZnPgo=') 50% 50% no-repeat; border: 12px solid transparent; border-right-width: 2px; border-left-width: 8px; }"+
+".win-close-btn:hover, .win-minimize-btn:hover { opacity: 0.5; }"+
+".win-minimize-btn.mod_first { right: 0px; border-right-width: 12px; }" +
+".win-footer { text-align: center; }"+
+".win-header, .win-fieldset, .win-footer { -moz-box-sizing:border-box; -webkit-box-sizing:border-box; box-sizing:border-box; }"+
+".win-resizer { position: absolute; right: -9px; bottom: -10px; width: 20px; height: 20px; border-radius: 3px; cursor:se-resize; -moz-user-select:none; -webkit-user-select:none; -ms-user-select:none; }"+
+".win-resizer:hover { border-bottom: 4px solid silver; border-right: 4px solid silver; }"+
+".win-splitter { width: 3px; height: auto; background: #eee;  }"+
+".win-splitter:hover { background: silver; cursor:col-resize; }"+
+".win-splitter.type_horizontal { display: block; width: auto; height: 3px; }"+
+".win-splitter.type_horizontal:hover { background: silver; cursor:row-resize; }"+
+".win-fieldset, .win fieldset { border: none; padding: 0; }"+
+".win-fieldset > .row { padding: 5px 17px; clear:both; }"+
+".win-fieldset > .row > label { float: left; width: 100px; }\n";
+
+
