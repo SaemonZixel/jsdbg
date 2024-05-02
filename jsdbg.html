@@ -14,6 +14,7 @@
 	<script src="/jsdbg.js" type="text/javascript"></script>
 	<script src="/jsdbg.ide.js" type="text/javascript"></script>
 	<script src="/acorn.js" type="text/javascript"></script>
+	<script src="/test.js?a=123" type="text/javascript" data-prototypes="Test"></script>
 	<script id="compiled" type="text/javascript"></script>
 	<script>
 	
@@ -58,6 +59,7 @@
 				jsdbg_test_all();
 			};
 			document.head.appendChild(script);
+			return 'test start...';
 		}
 		
 	</script>
@@ -95,7 +97,7 @@ function Test1() {
 <br>
 <button onclick="parse()">parse</button>
 <button onclick="document.querySelector('#result').innerHTML=jsdbg.compile(document.getElementById('example').value)">compile</button>
-<button onclick="jsdbg.debug('parse();');">debug</button>
+<button onclick="alert(jsdbg_tests[jsdbg?'__jsdbg_call':'call'](this));">debug</button>
 <button onclick="compile();Test1(1, 2);">Test1()</button>
 <button onclick="compile();xhr(123, '/');">xhr()</button>
 <button onclick="jsdbg_tests();">jsdbg-tests.js</button>

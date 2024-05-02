@@ -27,8 +27,15 @@ Ctx.prototype.__next_step = function (label) {
 		}
 	}
 	
-// 			if(breakpoints.get(__file) != null)
-// 				throw new UnknownError("breakpoint!");
+	if(jsdbg.breakpoints[this.__func]) {
+		for(var i=0; i<jsdbg.breakpoints[this.__func].length; i++) {
+			var brk = jsdbg.breakpoints[this.__func];
+			var start = Math.floor(this.__ip / 10000);
+			var end = this.__ip % 10000;
+			if(start <= brk && end >= brk)
+				throw new UnknownError("breakpoint!");
+		}
+	}
 	
 	return;
 };
@@ -37,8 +44,12 @@ Ctx.prototype.__func_start = function (func_name, func__jsdbg_id, parent_ctx) {
 	console.log("__func_start(): func_name="+func_name);
 
 	// родительский контекст
-	if (parent_ctx)
-		this.__proto__ = parent_ctx;
+	if (parent_ctx) {
+		if(parent_ctx == this)
+			debugger;
+		else
+			this.__proto__ = parent_ctx;
+	}
 
 	// сохраняем информацию о функции
 	this.__func = func_name;
@@ -50,13 +61,19 @@ Ctx.prototype.__func_start = function (func_name, func__jsdbg_id, parent_ctx) {
 Ctx.prototype.__func_end = function (func_name) {
 	console.log("__func_end(): func_name="+func_name+", __func="+(this.__func||''));
 	
-	for(var up_ctx = this; up_ctx.__up; up_ctx = up_ctx.__up)
+	for(var up_ctx = this;; up_ctx = up_ctx.__up)
 		if(up_ctx.__func == func_name) {
-			up_ctx.__up.__down = undefined; // отцепляем всё ниже
+			if(up_ctx.__up) up_ctx.__up.__down = undefined; // отцепляем всё ниже
 			return up_ctx.__up;
 		}
+		else {
+			up_ctx.__up
+		}
 	
-	console.info("__func_end(): not found ctx.__func="+func_name+' !');
+	// бывает что это самый верхний контекст
+// 	if (up_ctx.__up)
+		console.info("__func_end(): not found ctx.__func="+func_name+' !');
+	
 	return up_ctx;
 };
 
@@ -157,13 +174,49 @@ jsdbg.init = function ()
 	this.compiled = []; // скомпилированые функции
 	this.source = []; // исходный код скопилированых функций
 	this.step_limit = undefined; // неограниченое количество шагов
+	this.breakpoints = {};
 
+	Function.prototype.__jsdbg_call = function()
+	{
+		// компилируем функцию если надо
+		if(!this.__jsdbg_compiled)
+			jsdbg.compileFunc(this);
+			
+		// новый контекст
+		jsdbg.ctx = new Ctx();
+			
+		jsdbg.step_limit = 99;
+		
+		// уже скомпилированная функция (обычно anonymous)
+		var func = this.__jsdbg_compiled ? this : jsdbg.compiled[this.__jsdbg_id];
+		
+		switch(arguments.length) {
+			case 0:
+				var result = func.call(window); break;
+			case 1:
+				var result = func.call(arguments[0]); break;
+			case 2:
+				var result = func.call(arguments[0], arguments[1]); break;
+			case 3:
+				var result = func.call(arguments[0], arguments[1], arguments[2]); break;
+			case 4:
+				var result = func.call(arguments[0], arguments[1], arguments[2], arguments[3]); break;
+			case 5:
+				var result = func.call(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4]); break;
+			default:
+				alert('__jsdbg_call: Not implemented yet! '+arguments.lenght);
+				throw new Error('__jsdbg_call: Not implemented yet! '+arguments.lenght);
+		}
+		
+		return result;
+	};
+	
 	// создадим прокси-функции
 	Function.prototype.__jsdbg_call0 = function(){ 
 		if (!this.__jsdbg_id && !this.__jsdbg_compiled) {
 			if(jsdbg.compileFunc(this) == false) {
 				// не удалось скомпилировать, возможно [native]
-				return this.call(arguments[0], arguments[1]);
+				return this.call(arguments[0]);
 			}
 		}
 		if(!jsdbg.ctx.__down) {
@@ -200,7 +253,7 @@ jsdbg.init = function ()
 		if (!this.__jsdbg_id && !this.__jsdbg_compiled) {
 			if(jsdbg.compileFunc(this) == false) {
 				// не удалось скомпилировать, возможно [native]
-				return this.call(arguments[0], arguments[1]);
+				return this.call(arguments[0], arguments[1], arguments[2]);
 			}
 		}
 		if(!jsdbg.ctx.__down) {
@@ -219,7 +272,7 @@ jsdbg.init = function ()
 		Function.prototype['__jsdbg_call'+arg_count] = eval('(function(){\n'+ 
 		'	if (!this.__jsdbg_id && !this.__jsdbg_compiled) {\n'+
 		'		if(jsdbg.compileFunc(this) == false) {\n'+
-		'			return this.call(arguments[0], arguments[1]);}\n'+
+		'			return this.call(arguments[0]'+args.join('')+');}\n'+
 		'	}\n'+
 		'	if(!jsdbg.ctx.__down) {\n'+
 		'		jsdbg.ctx.__down = new Ctx();\n'+
@@ -241,6 +294,7 @@ jsdbg.source = [];
 jsdbg.step_limit = undefined;
 
 jsdbg.compile = function (src, id){
+// 	this.src = src;
 	this.code = [];
 	this.tmp = 0; // текущая свободная временная переменная
 	this.func_name = []; // стек вложенных функций
@@ -296,7 +350,7 @@ jsdbg.compileAcornStmt = function (node) {
 		this.code.push('\n\t}');
 			
 		// body
-		this.code.push('\n\twhile(1) try{ switch(ctx.__ip){');
+		this.code.push('\n\tfor(var _prt_cnt=20;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){');
 		this.code.push('\n\t\tcase 0:');
 		this.compileAcornStmt(node.body);
 		
@@ -306,8 +360,12 @@ jsdbg.compileAcornStmt = function (node) {
 		// try{}catch(){}
 		this.code.push('\n\t}} catch(ex) {\n\t\tif(ex == "step_limit=0!") throw ex;\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}');
 		
-		this.code.push('\n}');
+		// prt_cnt
+		this.code.push('\n\tif(_prt_cnt == 0) throw new Error("Infinity loop detected! (_prt_cnt == 0)");');
 		
+		// function end
+		this.code.push('\n}');
+				
 		this.func_name.pop();
 		this.scope.shift();
 	}
@@ -693,7 +751,7 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 	
 	else if(node.type == "Identifier") 
 	{
-console.log(this.scope[0], node.name);
+// console.log(this.scope[0], node.name);
 		if (node.name == 'undefined')
 			var code_line = 'undefined';
 		else if (this.scope[0] && this.scope[0][node.name])
@@ -904,7 +962,7 @@ console.log(this.scope[0], node.name);
 	{
 		this.code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] =\nfunction(');
+			(node.start*10000+node.end)+': var parent_ctx = ctx; t['+this.tmp+'] = jsdbg.callback.bind(function(');
 		
 		// temp name
 		var func_name = this.func_name[this.func_name.length-1]+'-func'+node.start;
@@ -919,10 +977,22 @@ console.log(this.scope[0], node.name);
 		}
 		this.code.push('){');
 		
-		// function start
-		this.code.push('\n\tvar ctx_ = window.jsdbg ? window.jsdbg.ctx.__func_start("'+func_name+'", '+this.func_id+', ctx) : new Ctx(ctx); ');
-		this.code.push('\n\tvar ctx = ctx_;');
+		// prepare ctx
+		this.code.push('\n\tvar ctx = (window.jsdbg ? jsdbg.ctx : new Ctx());');
 		this.code.push('\n\tvar t = ctx.__t;');
+		
+		// продолжение выполнения или начало вызова?
+		this.code.push('\n\tif(ctx.__ip == 0) {');
+		
+		// зарегистрируем начало функции
+		this.code.push('\n\t\tctx.__func_start("'+func_name+'", '+this.func_id+', parent_ctx);');
+		
+		// зарегистрируем arguments
+		this.code.push('\n\t\tctx.arguments = arguments;');
+		for(var i=0;i<node.params.length;i++)
+			code.push('\n\t\tctx.'+node.params[i].name+' = arguments['+i+'];');
+			
+		this.code.push('\n\t}');
 		
 		// arguments
 		this.code.push('\n\tctx.arguments = arguments;');
@@ -930,7 +1000,7 @@ console.log(this.scope[0], node.name);
 			this.code.push('\n\tctx.'+node.params[i].name+' = arguments['+i+'];');
 			
 		// body
-		this.code.push('\n\twhile(1) try { switch(ctx.__ip){');
+		this.code.push('\n\tfor(var _prt_cnt=100; _prt_cnt; _prt_cnt--) try { switch(ctx.__ip){');
 		this.code.push('\n\t\tcase 0:');
 		this.compileAcornStmt(node.body);
 		
@@ -938,12 +1008,19 @@ console.log(this.scope[0], node.name);
 		this.code.push('\n\t}} catch(ex) {');
 		this.code.push('\n\t\tif(ex == "step_limit=0!") throw ex;');
 		this.code.push('\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}');
-		this.code.push('\n\t};');
 		
+		// prt_cnt
+		this.code.push('\n\tdebugger; //if(_prt_cnt == 0) throw new Error("Infinity loop detected! (_prt_cnt==0)");');
+		
+		// function end and wrapper function end
+		var closure_id = jsdbg.next_id++;
+		this.code.push('\n\t}, '+closure_id+', '+this.func_id+');');
+// 		jsdbg.source[closure_id] = this.src;
+				
 		// чтоб не компилировало при вызове проставим родительский id
-		this.code.push(' t['+this.tmp+'].__jsdbg_id = '+this.func_id+';');
-		this.code.push(' t['+this.tmp+'].__jsdbg_compiled = true;');
-		this.code.push(' t['+this.tmp+'].__jsdbg_parent_ctx = ctx;');
+// 		this.code.push(' t['+this.tmp+'].__jsdbg_id = '+this.func_id+';');
+// 		this.code.push(' t['+this.tmp+'].__jsdbg_compiled = true;');
+// 		this.code.push(' t['+this.tmp+'].__jsdbg_parent_ctx = ctx;');
 		
 		this.func_name.pop();
 		this.scope.shift();
@@ -978,6 +1055,27 @@ jsdbg.compileFunc = function (func) {
 	}
 	return false;
 };
+
+jsdbg.callback = function(closure_id, parent_func_id) {
+	this.__jsdbg_id = closure_id;
+	this.__jsdbg_compiled = true;
+	jsdbg.compiled[closure_id] = this;
+	jsdbg.source[closure_id] || (jsdbg.source[closure_id] = jsdbg.source[parent_func_id]);
+
+	switch(arguments.length) {
+		case 0: throw new Error('Too few arguments!');
+		case 1: return this.__jsdbg_call(window);
+		case 2: return this.__jsdbg_call(window, arguments[1]);
+		case 3: return this.__jsdbg_call(window, arguments[1], arguments[2]);
+		case 4: return this.__jsdbg_call(window, arguments[1], arguments[2], arguments[3]);
+		case 5: return this.__jsdbg_call(window, arguments[1], arguments[2], arguments[3], arguments[4]);
+		case 6: return this.__jsdbg_call(window, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+		case 7: return this.__jsdbg_call(window, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
+		case 8: return this.__jsdbg_call(window, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7]);
+		default:
+			throw new Error('Not implemented yet');
+	}
+}
 
 jsdbg.debug = function (src) 
 {

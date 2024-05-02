@@ -116,13 +116,13 @@ function jsdbg_ide_onclick(event, target) {
 		var func_name = win.dataset.funcName;
 
 		// безымянная функция метода
-		if(!function_header && func_name) function_header = ['', func_name];
+		if(!function_header && func_name) function_header = ['', func_name.replace(/prototype./, '')];
 
 		if (prototype_name == '' && func_name)
 			return alert('Error! prototype_name = "" and func_name = '+func_name);
 
 		// попытались создать быземянный метод
-		if (prototype_name && new_code.match(/^function *\(/)) {
+		if (prototype_name && !function_header && new_code.match(/^function *\(/)) {
 			return alert("Error! Method without name detected!");
 		}
 		
@@ -159,7 +159,12 @@ function jsdbg_ide_onclick(event, target) {
 			var method_type =  document.getElementById(win_id+"_class_methods").className.match(/selected/) ? '.' : '.prototype.';
 		
 			func_name = function_header[1];	
+			try {
 			eval(prototype_name+method_type+func_name+' = '+new_code+';');
+			} catch(ex) {
+				console.error(ex);
+				alert(ex);
+			}
 		}
 		
 		// сохранить в файл
@@ -170,10 +175,10 @@ function jsdbg_ide_onclick(event, target) {
 			target: trg1});
 		
 		// обновим список методов
-		jsdbg_ide_onclick({
+		/*jsdbg_ide_onclick({
 			type: 'click', 
 			target: document.querySelector('#'+win_id + "_class_hierarchy option[data-prototype-name='" + prototype_name  +"']")
-		});
+		});*/
 		
 		return;
 		
@@ -205,37 +210,46 @@ function jsdbg_ide_onclick(event, target) {
 		return;
 	}
 
-
 	// cmd_code_editor_set_breakpoint
 	if(trg1.className.indexOf('cmd_code_editor_set_breakpoint') > -1 || trg1p.className.indexOf('cmd_code_editor_set_breakpoint') > -1) {
 		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
-		var editor1 = document.getElementById(win_id).querySelector('textarea.c-code_editor-textarea');
-		var select1 = document.getElementById('jsdbg_file_list_selector');
-		var file_name = editor1.getAttribute("data-file-name") || select1.value;
-		file_name = file_name == "(new...)" ? "(no file)" : file_name;
-		var file_name_offset = parseInt(editor1.getAttribute("data-file_name-offset")||"0");
-return;
-		// начнём список breakpoints для этого файла если небыло
-		if(file_name in littleLisp.breakpoints == false)
-			littleLisp.breakpoints[file_name] = {};
+		var win = document.getElementById(win_id);
+		var func_name = win.dataset.funcName.replace('prototype.', '');
+		var editor1 = code_editor('#'+win_id+' .c-code_editor-textarea');
+		var cursor_pos = editor1.selection.getCursor();
+		var text_offset = editor1.session.doc.positionToIndex(cursor_pos);
+console.log(cursor_pos, text_offset);
+		
+		// начнём список breakpoints для этой функции
+		if (win.dataset.func_name in jsdbg.breakpoints == false)
+			jsdbg.breakpoints[func_name] = [];
 		
 		// проверим на существующий breakpoint в месте курсора
-		var cursor_pos = editor1.selectionStart + file_name_offset;
-		for (var brk in	littleLisp.breakpoints[file_name]) {
-			var off = brk >> 16;
-			var len = brk & 32767;
+		if(jsdbg.breakpoints[func_name].indexOf(text_offset) > -1) 
+		{
+			// если уже есть breakpoint в этом месте, то удалим
+			jsdbg.breakpoints[func_name].splice(
+				jsdbg.breakpoints[func_name].indexOf(text_offset));
 			
-			// если уже есть breakpoint в этом месте, то удалим и закончим на этом
-			if (cursor_pos >= off && (cursor_pos <= off+len)) {
-				delete littleLisp.breakpoints[file_name][brk];
-				
-				// включим подсветку breakpoints
-				editor1.selectionEnd = editor1.selectionStart;
-				html_onmouse({type:"mouseover", target:trg1});
-				
-				return;
-			}
+			// удалим маркер
+			var markers = editor1.session.getMarkers();
+			for(var f in markers)
+				if(markers[f].range
+				&& markers[f].range.start.row == cursor_pos.row 
+				&& markers[f].range.start.column == cursor_pos.column)
+					editor1.session.removeMarker(f);
+			
+			return;
 		}
+		
+		// добавим breakpoint
+		jsdbg.breakpoints[func_name].push(text_offset);
+		
+		// добавим маркер
+		var Rng = ace.require("ace/range").Range;
+		editor1.session.addMarker(new Rng(cursor_pos.row, cursor_pos.column, cursor_pos.row, cursor_pos.column+1), 'jsdbg-ide-ace-breakpoint', 'text', false);
+		
+return;
 		
 		var atom_alphabet = 
 		"qwfpgjluyarstdhneiozxcvbkmQWFPGJLUYARSTDHNEIOZXCVBKM" + // Latin
@@ -607,7 +621,7 @@ return;
 		{
 			var list = (scrpit_nodes[i].dataset.classes || scrpit_nodes[i].dataset.prototypes).split(',');
 			while(list.length) {
-				prototype_to_file_map[list[0]] = scrpit_nodes[i].src.replace(/https?:\/\/[^/]+/, '');
+				prototype_to_file_map[list[0]] = scrpit_nodes[i].src.replace(/https?:\/\/[^/]+/, '').replace(/\?.*/, '');
 				list.shift();
 			}
 		}
@@ -1322,7 +1336,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 	
 		var win = document.createElement("DIV");
 		win.id = 'jsdbg_class_browser_'+id;
-		win.className = "win jsdbg-class-browser win-is-hidden";
+		win.className = "win jsdbg-ide-class-browser win-is-hidden";
 		win.style.height = '600px';
 		win.style.width = '700px';
 		win.addEventListener('resize', function(){ 
@@ -1331,9 +1345,16 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 				editor.resize(true);
 				editor.renderer.updateFull(true);
 			}
-		})
+		});
+		win.addEventListener('close', function(event){
+			// удалим кнопки показа окна
+			var btns = document.querySelectorAll(".cmd_code_editor_show_class_browser[data-win-id='"+event.target.id+"']");
+			for(var i=0; i<btns.length; i++) 
+				btns[i].parentNode.removeChild(btns[i]);
+			
+		});
 		win.dataset.winSettingsLocalStorage = 'jsdbg_class_browser_'+id;
-		win.innerHTML = '<div id="jsdbg_class_browser_'+id+'_title" style="height:35px;" class="win-header">Class Browser <a class="win-minimize-btn" href="javascript:void(0)" title="Minimize (ESC)">_</a><a class="win-close-btn" href="javascript:void(0)" title="Close">x</a></div>'+
+		win.innerHTML = '<div id="jsdbg_class_browser_'+id+'_title" style="height:35px;" class="win-header">Class Browser #'+id+'<a class="win-minimize-btn" href="javascript:void(0)" title="Minimize (ESC)">_</a><a class="win-close-btn" href="javascript:void(0)" title="Close">x</a></div>'+
 		
 		'<div class="win-area" style="display:flex;display:-webkit-box;min-height:165px;">'+
 		
@@ -1428,12 +1449,12 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		win_onmouse({type:'winshow', target: win});
 		
 		// добавим кнопку на панель
-		if(document.getElementById("jsdbg_ide_panel") && !document.querySelector("#jsdbg_ide_panel .cmd_code_editor_show_class_browser")) {
+		if(document.getElementById("jsdbg_ide_panel") /*&& !document.querySelector("#jsdbg_ide_panel .cmd_code_editor_show_class_browser")*/) {
 			var button = document.createElement("BUTTON");
-			button.innerHTML = "Class Browser";
+			button.innerHTML = "Class Browser #"+id;
 			button.className = "cmd_code_editor_show_class_browser";
 			button.dataset.winId = 'jsdbg_class_browser_'+id;
-			document.getElementById("jsdbg_ide_panel").insertBefore(button, document.getElementById("jsdbg_ide_panel").lastElementChild);
+			document.getElementById("jsdbg_ide_panel").insertBefore(button, document.getElementById("jsdbg_ide_panel").firstElementChild);
 		}
 	}
 	
@@ -2128,7 +2149,7 @@ if (!document.getElementById("jsdbg_ide_main_window_show")) {
 	var div = document.createElement("DIV");
 	div.id = "jsdbg_ide_panel";
 	div.setAttribute("style", "position:fixed; right: 2px; bottom: 2px; display: block; z-index: 999; text-align: right;");
-	div.innerHTML = '<button id="jsdbg_ide_main_window_show" onclick="jsdbg_ide_onclick({type: \'show_hide_jsdbg_ide\'})">New Class Browser</button><button id="" onclick="jsdbg_ide_onclick({type:\'show_debugger_win\', target: this})">New Debgger</button>';
+	div.innerHTML = '<button id="jsdbg_ide_main_window_show" onclick="jsdbg_ide_onclick({type: \'show_hide_jsdbg_ide\'})">New Class Browser</button><button id="" onclick="jsdbg_ide_onclick({type:\'show_debugger_win\', target: this})" style="display:none">New Debgger</button>';
 	
 	try {
 		document.querySelector("body").appendChild(div);
@@ -2376,14 +2397,17 @@ console.log(JSON.stringify(win_settings));
 			if(ev['position']) delete ev['position'];
 		}
 		
+		// уберём класс скрытия
 		if(trg1.className.indexOf('win-is-hidden') > -1)
 			trg1.className = trg1.className.replace(/win-is-hidden( |$)/,'');
 		
+		// выровняем по центру если попросили
 		if(!ev['position'] || ev.position == 'center' || ev.position == 'center center') {
 			trg1.style.left = (window.innerWidth - trg1.offsetWidth) / 2 + 'px';
 			trg1.style.top = (window.innerHeight - trg1.offsetHeight) / 2 + 'px';
 		}
 		
+		// покажем тёмный фон если попросили
 		if(ev['with_background']) {
 			var cover = document.getElementById('win_backcover') || document.createElement('DIV');
 			cover.style.cssText = 'height: 100%;left:0;position:fixed;top:0;width:100%;z-index: 98;background:'+(typeof ev['with_background'] == 'boolean' ? 'rgba(0, 0, 0, 0.7)' : ev['with_background']);
@@ -2393,6 +2417,13 @@ console.log(JSON.stringify(win_settings));
 				document.body.appendChild(cover);
 			}
 		}
+		
+		// z-index
+		var max_zIndex = 1;
+		var wins = document.querySelectorAll('.win');
+		for(var i=0; i<wins.length; i++)
+			if(wins[i].style.zIndex > max_zIndex) max_zIndex = wins[i].style.zIndex;
+		trg1.style.zIndex = max_zIndex+1;
 	}
 	
 	// .win-close-btn, .win-close-button
@@ -2410,12 +2441,13 @@ console.log(JSON.stringify(win_settings));
 		var win = trg1;
 		
 		// удалим связанную кнопку с этим окном
-		if (win.button && win.button.parentNode)
-			win.button.parentNode.removeChild(win.button);
+		/*if (win.button && win.button.parentNode)
+			win.button.parentNode.removeChild(win.button);*/
+		
+		win.dispatchEvent(new Event('close'));
 		
 		// удалим окно
 		win.parentNode.removeChild(win);
-		
 	}
 	
 	// .win-splitter [mousedown]
@@ -2659,11 +2691,12 @@ jsdbg_ide_onclick.css_styles =
 "#ide_main_window > .ace_editor { border-top:26px solid transparent; display:block; }\n"+
 ".jsdbg-ide-class-browser .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
 ".jsdbg-ide-debugger .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
+".jsdbg-ide-class-browser .win-header { padding: 10px !important; }\n"
 
 ".jsdbg-ide-class-browser optgroup.selected { }\n"+
-
+".jsdbg-ide-ace-breakpoint { background: red; position: absolute; }\n"+
 ".dbg_readonly_code .c-code_editor { background-color: #ffa; }\n"+
-".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }";
+".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }\n";
 "";
 
 win_onmouse.win_css_styles = 
