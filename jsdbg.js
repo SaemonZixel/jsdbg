@@ -22,6 +22,7 @@ Ctx.prototype.__next_step = function (label) {
 		jsdbg.step_limit--;
 		
 		// если лимит шагов истёк, то ждём дльнейших указаний
+		// TODO показать окно дебагера, если можно?
 		if(jsdbg.step_limit < 1) {
 			throw "step_limit=0!";
 		}
@@ -164,7 +165,7 @@ Ctx.prototype.__new = function ()
 		default:
 			throw new Error('not implemented yet!');
 	}
-}
+};
 
 if(!window['jsdbg']) function jsdbg(){};
 
@@ -284,14 +285,6 @@ jsdbg.init = function ()
 		'})');
 	}
 };
-
-jsdbg.next_id = 1;
-
-jsdbg.compiled = [];
-
-jsdbg.source = [];
-
-jsdbg.step_limit = undefined;
 
 jsdbg.compile = function (src, id){
 // 	this.src = src;
@@ -565,6 +558,50 @@ jsdbg.compileAcornStmt = function (node) {
 		this.continue_ip = old_continue_ip;
 	}
 	
+	else if(node.type == "ForInStatement") 
+	{
+		var old_break_ip = this.break_ip;
+		var old_continue_ip = this.continue_ip;
+		this.break_ip = (node.end*10000+node.start); // перевёртыш
+		this.continue_ip = (node.left.start*10000+node.left.end); // на след.ключ
+		var tmp_var = 'forin_'+(node.start*10000+node.end); // список ключей
+	
+		// for-right
+		this.code.push(' ctx.__next_step('+
+			(node.right.start*10000+node.right.end)+');\n\t\tcase '+
+			(node.right.start*10000+node.right.end)+':');
+		var forin_right = this.compileAcornExpr(node.right, true);
+		
+		// список ключей и индекс
+		this.code.push(' var '+tmp_var+' = Object.keys('+forin_right+'), '+tmp_var+'_i = 0;');
+		
+		// регистрируем в scope переменную цикла
+		this.scope[0][node.left.declarations[0].id.name] = true;
+		
+		// начинаем тело цикла
+		this.code.push(' ctx.__next_step('+
+			(node.left.start*10000+node.left.end)+');\n\t\tcase '+
+			(node.left.start*10000+node.left.end)+':');
+			
+		// проверяем, можно ли взять след. ключ
+		this.code.push('\n\t\t\tif('+tmp_var+'.length <= '+tmp_var+'_i) ');
+		this.code.push('{ ctx.__next_step('+ (node.end*10000+node.start)+ '); break; }'); 
+		// если можно -> берём
+		this.code.push('\n\t\t\telse ctx.'+node.left.declarations[0].id.name+' = '+tmp_var+'['+tmp_var+'_i++];');
+		
+		// for-body
+		this.compileAcornStmt(node.body);
+
+		// назад к for-left
+		this.code.push(' ctx.__next_step('+(node.left.start*10000+node.left.end)+'); break;');
+		
+		// for-end перевёртыш
+		this.code.push('\n\t\tcase '+(node.end*10000+node.start)+':');
+		
+		this.break_ip = old_break_ip;
+		this.continue_ip = old_continue_ip;
+	}
+	
 	else if(node.type == "SwitchStatement") 
 	{
 		var old_break_ip = this.break_ip;
@@ -784,6 +821,18 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		this.code.push(code_line);
 		return 't['+this.tmp+']';
 	}
+	
+	else if(node.type == "ThisExpression") 
+	{
+		if (is_subexpression)
+			return 'this';
+			
+		var code_line = ' ctx.__next_step('+
+			(node.start*10000+node.end)+');\n\t\tcase '+
+			(node.start*10000+node.end)+': t['+this.tmp+'] = this;';
+		this.code.push(code_line);
+		return 't['+this.tmp+']';
+	}
 
 	else if(node.type == "BinaryExpression") 
 	{
@@ -939,8 +988,10 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		if (this_frag.indexOf('t[') === 0)
 			this.tmp += 1;
 		
-		if (node.property.type == "Identifier")
+		if (node.property.type == "Identifier" && node.computed == false)
 			var code_frag = this_frag + '.' + node.property.name;
+		else if (node.property.type == "Identifier" && node.computed == true)
+			var code_frag = this_frag + '[' + this.compileAcornExpr(node.property,true)+']';
 		else
 			var code_frag = this_frag + '[' + node.property.raw+']';
 		
@@ -1056,7 +1107,7 @@ jsdbg.compileFunc = function (func) {
 	return false;
 };
 
-jsdbg.callback = function(closure_id, parent_func_id) {
+jsdbg.callback = function (closure_id, parent_func_id) {
 	this.__jsdbg_id = closure_id;
 	this.__jsdbg_compiled = true;
 	jsdbg.compiled[closure_id] = this;
@@ -1075,10 +1126,12 @@ jsdbg.callback = function(closure_id, parent_func_id) {
 		default:
 			throw new Error('Not implemented yet');
 	}
-}
+};
 
-jsdbg.debug = function (src) 
+jsdbg.debug = function (src, _this, _arguments) 
 {
+	if (typeof src == 'function') return jsdbg.debugFunc(src, _this, _arguments);
+	
 	// создаём функцию-обёртку
 	var func_name = 'eval'+(new Date())*1;
 	var func_src = 'function '+func_name+'(){\n'+src+'\n}';
@@ -1095,8 +1148,10 @@ jsdbg.debug = function (src)
 	jsdbg.step_limit = 1;
 	
 	try {
-		jsdbg.compiled[func.__jsdbg_id].call(window);
-	} catch(ex) {
+		var args = _arguments || [];
+		jsdbg.compiled[func.__jsdbg_id].call(_this||window, args[0]||undefined, args[1]||undefined);
+	} 
+	catch(ex) {
 		if (ex != 'step_limit=0!') 
 			throw ex;
 	}
@@ -1104,53 +1159,89 @@ jsdbg.debug = function (src)
 	return jsdbg;
 };
 
-jsdbg.debugFunc = function (func) 
-		{
-			// компилируем функцию если надо
-			this.compileFunc(func);
-			
-			// новый контекст
-			jsdbg.ctx = new Ctx();
-			
-			jsdbg.step_limit = 1;
-			
-			jsdbg.compiled[func.__jsdbg_id].call(window);
-			
-// 			jsdbg_ide_onclick({type: });
-		};
+jsdbg.debugFunc = function (func, _this, _arguments) 
+{
+	// компилируем функцию если надо
+	if(!func.__jsdbg_id) this.compileFunc(func);
+	
+	// новый контекст
+	jsdbg.ctx = new Ctx();
+	
+	jsdbg.step_limit = 1;
+	
+	try {
+		var args = _arguments||[];
+		jsdbg.compiled[func.__jsdbg_id].call(_this||window, args[0]||undefined, args[1]||undefined);
+	}
+	catch(ex) {
+		alert(ex);
+		
+		if(jsdbg_ide_onclick)
+			jsdbg_ide_onclick({type: 'open_debugger', ctx: jsdbg.ctx});
+	}
+};
 
 jsdbg.stepIn = function () {
-			jsdbg.step_limit = 1;
-			
-			try {
-				jsdbg.compiled[jsdbg.ctx.__callee.__jsdbg_id]();
-			} catch(ex) {
-				if (ex == 'step_limit=0!') return;
-				throw ex;
-			}
-		};
+	jsdbg.step_limit = 1;
+	
+	try {
+		jsdbg.compiled[jsdbg.ctx.__func_id]();
+	} 
+	catch(ex) {
+		if (ex == 'step_limit=0!') return;
+		throw ex;
+	}
+};
 
 jsdbg.stepOver = function () {
-			jsdbg.step_limit = 1;
-			
-			try {
-				jsdbg.compiled[jsdbg.ctx.__callee.__jsdbg_id]();
-			} catch(ex) {
-				if (ex == 'step_limit=0!') return;
-				throw ex;
-			}
-		};
+	jsdbg.step_limit = 1;
+	
+	try {
+		jsdbg.compiled[jsdbg.ctx.__func_id]();
+	} 
+	catch(ex) {
+		if (ex == 'step_limit=0!') return;
+		throw ex;
+	}
+};
 
 jsdbg.continue = function () {
 	jsdbg.step_limit = 99;
 	
 	try {
-		jsdbg.compiled[jsdbg.ctx.__callee.__jsdbg_id]();
-	} catch(ex) {
+		jsdbg.compiled[jsdbg.ctx.__func_id]();
+	} 
+	catch(ex) {
 		if (ex == 'step_limit=0!') return;
 		throw ex;
 	}
 };
+
+jsdbg.next_id = 38;
+
+jsdbg.compiled = [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];
+
+jsdbg.source = [null,"function test1a() {\n\treturn 1+1;\n}","function test1b(arg1, arg2) {\n\treturn arg1+arg2;\n}","function test1c(arg1, arg2) {\n\treturn arg1 || arg2;\n}","function test1ca(arg1, arg2) {\n\targ1++;\n\treturn arg1;\n}","function test1cb(arg1, arg2) {\n\targ1--;\n\treturn arg1;\n}","function test1cc(arg1, arg2) {\n\treturn arg1++;\n}","function test1cd(arg1, arg2) {\n\treturn ++arg1;\n}","function test1d(arg1) {\n\treturn [1,\"two\", 3.1, undefined, true, false, null];\n}","function test1e(arg1) {\n\treturn {a: 1, b: 'two', \"c\": 3.1, e: undefined, \"f f\": true, _g: false, _123: null, __arg1: arg1};\n}","function test1f(arg1) {\n\targ1.a += 1; // 1 -> 2\n\targ1.b -= 1; // 12 -> 11\n\targ1.c *= 2; // 10 -> 20\n\targ1.d /= 3; // 12 -> 4\n\targ1.e &= 4; // 15 -> 4\n\targ1.f |= 8; // 4 -> 12\n\targ1.g ^= 5; // 12 -> 9\n\targ1.h %= 3; // 5 -> 2\n\treturn arg1;\n}","function test2_if1(arg1) {\n\tif (arg1)\n\t\treturn 1;\n\telse\n\t\treturn 2;\n}","function test2_if2(arg1) {\n\tif (arg1) {\n\t\treturn 1;\n\t}\n\telse {\n\t\treturn 2;\n\t}\n}","function test2_if3(arg1) {\n\tif (arg1) return 1;\n\treturn 2;\n}","function test2_for1(arg1) {\n\tvar tmp = arg1;\n\tfor(var i=0; i<3; i++)\n\t\ttmp++;\n\treturn tmp;\n}","function test2_for2(arg1) {\n\tvar tmp = arg1;\n\tfor(var i=0; i<3; i++)\n\t\treturn tmp++;\n\treturn arg1;\n}","function test2_while1(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp)\n\t\ttmp--;\n\treturn tmp;\n}","function test2_while2(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp < 10) {\n\t\ttmp = tmp+1;\n\t}\n\treturn tmp;\n}","function test2_while3(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp < 10) {\n\t\tif (tmp == 4) break;\n\t\ttmp++;\n\t}\n\treturn tmp;\n}","function test2_do_while4(arg1) {\n\tvar tmp = arg1;\n\tdo {\n\t\tif (tmp == 5) break;\n\t\ttmp++;\n\t} while(tmp < 10);\n\treturn tmp;\n}","function test2_switch1(arg1, arg2) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; break;\n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\";\n\t}\n\treturn tmp;\n}","function test2_switch2(arg1) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; break;\n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\"; break;\n\t}\n\treturn tmp;\n}","function test2_switch3(arg1) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; \n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\"; break;\n\t}\n\treturn tmp;\n}","function test3a(arg1) {\n\treturn arg1.a;\n}","function test3b(arg1) {\n\treturn arg1[1];\n}","function test3c(arg1) {\n\treturn arg1.a[2];\n}","function test3d(arg1) {\n\treturn arg1.a.b[1].length;\n}","function test3e(arg1) {\n\tthis.test3e_tmp1 = arg1+1;\n\treturn this.test3e_tmp1;\n}","function test3f(arg1, arg2) {\n\treturn arg1[arg2];\n}","function test4_try1(arg1) {\n\ttry {\n\t\tthrow '123';\n\t} catch(ex) {\n\t\treturn ex;\n\t}\n\treturn arg1;\n}","function test4_forin1(arg1) {\n\tfor(var f in arg1)\n\t\tif (f == 'bbb') return f;\n}","function test4_forin2(arg1) {\n\tfor(var f in arg1)\n\t\tif (f == 'bbb') break;\n\treturn arg1[f]\n}","function test9a(arg1) {\n\tvar func = function(){\n\t\treturn arg1;\n\t};\n\treturn func();\n}","function test9a(arg1) {\n\tvar func = function(){\n\t\treturn arg1;\n\t};\n\treturn func();\n}","function test9b(arg1) {\n\treturn JSON.stringify(arg1);\n}","function test9b2(arg1) {\n\treturn localStorage.getItem(arg1);\n}","function test9c(arg1) {\n\treturn new Date(arg1);\n}","function test9c2(arg1) {\n\treturn (new Date(arg1)).toString();\n}"];
+
+jsdbg.step_limit = 1;
+
+jsdbg.breakpoints = {};
+
+jsdbg.func_id = 37;
+
+jsdbg.code = ["\nfunction test9c2(","arg1","){","\n\tvar ctx = (window.jsdbg ? jsdbg.ctx : new Ctx());","\n\tvar t = ctx.__t;","\n\tif(ctx.__ip == 0) {","\n\t\tctx.__func_start(\"test9c2\", 37);","\n\t\tctx.arguments = arguments;","\n\t\tctx.arg1 = arguments[0];","\n\t}","\n\tfor(var _prt_cnt=20;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){","\n\t\tcase 0:"," ctx.__next_step(330049);\n\t\tcase 330049: t[0] = ctx.__new(Date, ctx.arg1);"," ctx.__next_step(330060);\n\t\tcase 330060: t[0] = t[0].toString.__jsdbg_call0(t[0]);"," ctx.__next_step(260061);\n\t\tcase 260061: ctx.__func_end(\"test9c2\"); return t[0];","\n\t\tdefault: ctx.__func_end(\"test9c2\"); return;","\n\t}} catch(ex) {\n\t\tif(ex == \"step_limit=0!\") throw ex;\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}","\n\tif(_prt_cnt == 0) throw new Error(\"Infinity loop detected! (_prt_cnt == 0)\");","\n}"];
+
+jsdbg.tmp = 0;
+
+jsdbg.func_name = [];
+
+jsdbg.break_ip = undefined;
+
+jsdbg.continue_ip = undefined;
+
+jsdbg.scope = [];
+
+jsdbg.ctx = {"__ip":250051,"__t":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"__catch_block":{},"__func":"test3e","__func_id":27,"arguments":{}};
 
 jsdbg.prototype.test1 = function test1() {
 	return 1;

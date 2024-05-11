@@ -1,6 +1,7 @@
 function test1a() {
 	return 1+1;
 }
+test1a.__arguments = [];
 test1a.__expect = 2;
 
 function test1b(arg1, arg2) {
@@ -219,6 +220,19 @@ function test3d(arg1) {
 test3d.__arguments = [{a: {b: ["1","22","333"]}}];
 test3d.__expect = 2;
 
+function test3e(arg1) {
+	this.test3e_tmp1 = arg1+1;
+	return this.test3e_tmp1;
+}
+test3e.__arguments = [9];
+test3e.__expect = 10;
+
+function test3f(arg1, arg2) {
+	return arg1[arg2];
+}
+test3f.__arguments = [{a:1, b:2, c:3}, 'b'];
+test3f.__expect = 2;
+
 function test4_try1(arg1) {
 	try {
 		throw '123';
@@ -229,6 +243,21 @@ function test4_try1(arg1) {
 }
 test4_try1.__arguments = [999];
 test4_try1.__expect = '123';
+
+function test4_forin1(arg1) {
+	for(var f in arg1)
+		if (f == 'bbb') return f;
+}
+test4_forin1.__arguments = [{aaa: 1, bbb: 2, ccc: 3}];
+test4_forin1.__expect = 'bbb';
+
+function test4_forin2(arg1) {
+	for(var f in arg1)
+		if (f == 'bbb') break;
+	return arg1[f]
+}
+test4_forin2.__arguments = [{aaa: 1, bbb: 2, ccc: 3}];
+test4_forin2.__expect = 2;
 
 function test9a(arg1) {
 	var func = function(){
@@ -295,8 +324,12 @@ function jsdbg_test_all() {
 	jsdbg_test('test3b');
 	jsdbg_test('test3c');
 	jsdbg_test('test3d');
+	jsdbg_test('test3e');
+	jsdbg_test('test3f');
 	
 	jsdbg_test('test4_try1');
+	jsdbg_test('test4_forin1');
+	jsdbg_test('test4_forin2');
 	
 	jsdbg_test('test9a');
 	jsdbg_test('test9b');
@@ -305,7 +338,7 @@ function jsdbg_test_all() {
 	jsdbg_test('test9c2');
 }
 
-function jsdbg_test(func_name, verbose) 
+function jsdbg_test(func_name, verbose, event) 
 {
 	if (!window[func_name]) return alert('Not found - '+func_name+'!');
 	
@@ -343,7 +376,18 @@ function jsdbg_test(func_name, verbose)
 	var result;
 	if (window[func_name].__jsdbg_id)
 	try {
+		// защита от опечатки
+		if('__arguments' in window[func_name] == false) 
+			alert('Not found '+func_name+'.__arguments!');
+		
 		var args = window[func_name].__arguments||[]
+		
+		// попросили запустить под дебагером
+		//console.log(event);
+		if ((event||{}).ctrlKey) {
+			return jsdbg.debug(window[func_name], window, args);
+		}
+		
 		jsdbg.ctx = new Ctx();
 		switch(window[func_name].length) {
 			case 0:
@@ -402,7 +446,7 @@ function jsdbg_test(func_name, verbose)
 		if(test_zone.innerHTML.indexOf(func_name) > 0)
 			test_zone.innerHTML = test_zone.innerHTML.replace('color:red">'+func_name+'</a', 'color:green">'+func_name+'</a');
 		else
-			test_zone.insertAdjacentHTML('beforeend', ' <a href="javascript:void(0)" onclick="jsdbg_test(\''+func_name+'\', true)" style="color:green">'+func_name+'</a>');
+			test_zone.insertAdjacentHTML('beforeend', ' <a href="javascript:void(0)" onclick="jsdbg_test(\''+func_name+'\', true, event)" style="color:green">'+func_name+'</a>');
 	}
 	else {
 		try { 
@@ -415,7 +459,7 @@ function jsdbg_test(func_name, verbose)
 		if(test_zone.innerHTML.indexOf(func_name) > 0)
 			test_zone.innerHTML = test_zone.innerHTML.replace('color:green">'+func_name+'</a', 'color:red">'+func_name+'</a');
 		else
-			test_zone.insertAdjacentHTML('beforeend', ' <a class="bad-test" href="javascript:void(0)" onclick="jsdbg_test(\''+func_name+'\', true)" style="color:red">'+func_name+'</a>');
+			test_zone.insertAdjacentHTML('beforeend', ' <a class="bad-test" href="javascript:void(0)" onclick="jsdbg_test(\''+func_name+'\', true, event)" style="color:red">'+func_name+'</a>');
 	}
 	
 }

@@ -92,6 +92,9 @@ function jsdbg_ide_onclick(event, target) {
 				return this.textarea.selectionStart == this.textarea.selectionEnd
 					? this.textarea.value
 					: this.textarea.value.substring(this.textarea.selectionStart, this.textarea.selectionEnd);
+			},
+			setSelectionRange: function(start, end){
+				this.textarea.setSelectionRange(start, end);
 			}
 		}
 		return editor;
@@ -704,8 +707,8 @@ return;
 			for(var f in clazz.prototype) if(f in clazz.prototype.__proto__ == false) {
 				if (typeof clazz.prototype[f] == 'function')
 					file_content.push(clazz_name+'.prototype.'+f+' = '+clazz.prototype[f].toString()+';');
-				else
-					file_content.push(clazz_name+'.prototype.'+f+' = '+(typeof clazz.prototype[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz.prototype[f]))+';');
+				/* else
+					file_content.push(clazz_name+'.prototype.'+f+' = '+(typeof clazz.prototype[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz.prototype[f]))+';');*/
 			}
 
 			// если есть метод инициализации класса/прототипа, то его надо будет запустить
@@ -1553,14 +1556,17 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 
 function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 
-	// [debugger.*]
-	if(ev.type.indexOf("debugger.") > -1) {
+	// [open_debugger]
+	if(ev.type.indexOf("open_debugger") > -1) {
 		var panel = document.getElementById("jsdbg_ide_panel");
+		
+		// подключим оформление
+		jsdbg_ide_onclick({type: 'init_css'});
 		
 		// поищем кнопку, и если есть откроем окно дебагера
 		for (var ii = 0; ii < panel.childNodes.length; ii++) {
 			var button = panel.childNodes[ii];
-			if (button.debugger1 == ev.debugger) {
+			if (button.debugger1 == (ev.debugger||ev.ctx)) {
 				var id = button.innerHTML.replace(/.+?#/, '');
 				if (! document.getElementById("jsdbg_debugger_"+id))
 					button.click();
@@ -1574,15 +1580,16 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var button = document.createElement('BUTTON');
 		button.className = "cmd_code_editor_debugger";
 		button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
-		button.debugger1 = ev.debugger;
+		button.debugger1 = ev.debugger || ev.ctx;
 
 		if(document.getElementById("jsdbg_ide_panel")) {
 			panel.insertBefore(button, panel.firstElementChild);
 		}
-		else {
+		// старый код с главным окном IDE
+		/*else {
 			button.className = "c-panel-btn cmd_code_editor_debugger";
 			document.querySelector("#ide_main_window .c-toolbar").appendChild(button);
-		}
+		}*/
 		
 		// и нажмём на неё, чтоб дебагер открылся
 		button.click();
@@ -1633,17 +1640,11 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			clear_before_load: true
 		});
 		
-		// TODO ace
-		var editor = document.getElementById(dbg_id+'_code_editor');
+		var editor = code_editor('#'+dbg_id+'_code_editor');
 		
 		// исходный код
-		if (selected_ctx.__callee) {
-			editor.value = jsdbg.source[selected_ctx.__callee.__jsdbg_id];
-		}
-		else {
-			editor.value = (selected_ctx.__callee||'').toString();
-		}
-		editor.setAttribute("data-func-name", selected_ctx.__func || selected_ctx.__callee.name);
+		editor.setValue(jsdbg.source[selected_ctx.__func_id]);
+		editor.dataset.funcName = selected_ctx.__func;
 		document.getElementById(dbg_id).className = document.getElementById(dbg_id).className.replace(/ *dbg_readonly_code/, ""); // отчистим атрибут только для чтения
 
 		// выделим нужный фрагмент
@@ -1692,8 +1693,8 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				'<textarea id="jsdbg_debugger_'+id+'_code_editor" class="c-code_editor-textarea" style="width:100%;height:100%;background:transparent;position:absolute;top:0;left:0;top:0;bottom:0;right:0;"></textarea>',
 			'</div>',
 			'<div id="jsdbg_debugger_'+id+'_splitter" class="win-splitter type_horizontal"></div>',
-			'<div id="jsdbg_debugger_'+id+'_watch" class="win-area" style="flex:10;-webkit-box-flex:10.0">'+
-				'<div class="c-object_props" style="width:100%;" data-win-id="jsdbg_debugger_'+id+'"></div>',
+			'<div id="jsdbg_debugger_'+id+'_watch" class="win-area" style="flex:10;-webkit-box-flex:10.0;position:relative;">'+
+				'<div class="c-object_props" style="width:100%;height:100%;position:absolute;" data-win-id="jsdbg_debugger_'+id+'"></div>',
 			'</div>',
 			'<div class="win-resizer"></div>',
 		'</div>'
@@ -1763,15 +1764,20 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var win = document.getElementById("jsdbg_debugger_"+id);
 		if(!win) {
 			jsdbg_ide_onclick({
-			type: "show_debugger_win",
-			target: button});
+				type: "show_debugger_win",
+				target: button
+			});
 		}
-		else if(win.style.display == "none") {
+		else if(win.className.indexOf('win-is-hidden') > -1)
+			win_onmouse({type: 'winshow', target: win});
+		else
+			win_onmouse({type: 'winclose', target: win});
+		/*else if(win.style.display == "none") {
 			win.style.display = "block";
 			win.querySelector(".c-code_editor-textarea").focus();
 		}
 		else 
-			win.style.display = "none";
+			win.style.display = "none";*/
 	}
 	
 	// cmd_code_editor_continue
@@ -1864,10 +1870,10 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		}
 		
 		// выделяем фрагмент кода текущий
-		var ide_main_window = document.getElementById(win_id+'_code_editor');
+		/*var ide_main_window = document.getElementById(win_id+'_code_editor');
 		ide_main_window.setSelectionRange(
 			Math.round(debugger1.ctx.__ip/10000), 
-			debugger1.ctx.__ip % 10000);
+			debugger1.ctx.__ip % 10000); */
 		
 		jsdbg_ide_onclick({
 			type: "refresh_dbg_debugger",
