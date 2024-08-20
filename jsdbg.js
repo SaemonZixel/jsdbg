@@ -296,7 +296,15 @@ jsdbg.compile = function (src, id){
 	this.continue_ip = undefined;
 	this.scope = [];
 	
-	var ast = acorn.parse(src);
+	try {
+		// acorn не хочет парсить expr в начале кода
+		if(src.match(/^function *\(/)) src = src.replace(/^function *\(/, 'function tmp(');
+		var ast = acorn.parse(src);
+	} catch(ex) {
+		console.error(ex);
+		console.log(src);
+		alert(ex.message);
+	}
 	
 	for(var i=0;i<ast.body.length;i++){
 		this.compileAcornStmt(ast.body[i], 0);
@@ -706,6 +714,14 @@ jsdbg.compileAcornStmt = function (node) {
 	else if(node.type == "EmptyStatement") {
 		/* skip */
 	}
+	
+	// TODO !
+	//else if(node.type == "UnaryExpression") {
+	//}
+	
+	// TODO ?:
+	//else if(node.type == "ConditionalExpression") {
+	//}
 	
 	else
 		this.compileAcornExpr(node, false);
@@ -1216,32 +1232,6 @@ jsdbg.continue = function () {
 		throw ex;
 	}
 };
-
-jsdbg.next_id = 38;
-
-jsdbg.compiled = [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];
-
-jsdbg.source = [null,"function test1a() {\n\treturn 1+1;\n}","function test1b(arg1, arg2) {\n\treturn arg1+arg2;\n}","function test1c(arg1, arg2) {\n\treturn arg1 || arg2;\n}","function test1ca(arg1, arg2) {\n\targ1++;\n\treturn arg1;\n}","function test1cb(arg1, arg2) {\n\targ1--;\n\treturn arg1;\n}","function test1cc(arg1, arg2) {\n\treturn arg1++;\n}","function test1cd(arg1, arg2) {\n\treturn ++arg1;\n}","function test1d(arg1) {\n\treturn [1,\"two\", 3.1, undefined, true, false, null];\n}","function test1e(arg1) {\n\treturn {a: 1, b: 'two', \"c\": 3.1, e: undefined, \"f f\": true, _g: false, _123: null, __arg1: arg1};\n}","function test1f(arg1) {\n\targ1.a += 1; // 1 -> 2\n\targ1.b -= 1; // 12 -> 11\n\targ1.c *= 2; // 10 -> 20\n\targ1.d /= 3; // 12 -> 4\n\targ1.e &= 4; // 15 -> 4\n\targ1.f |= 8; // 4 -> 12\n\targ1.g ^= 5; // 12 -> 9\n\targ1.h %= 3; // 5 -> 2\n\treturn arg1;\n}","function test2_if1(arg1) {\n\tif (arg1)\n\t\treturn 1;\n\telse\n\t\treturn 2;\n}","function test2_if2(arg1) {\n\tif (arg1) {\n\t\treturn 1;\n\t}\n\telse {\n\t\treturn 2;\n\t}\n}","function test2_if3(arg1) {\n\tif (arg1) return 1;\n\treturn 2;\n}","function test2_for1(arg1) {\n\tvar tmp = arg1;\n\tfor(var i=0; i<3; i++)\n\t\ttmp++;\n\treturn tmp;\n}","function test2_for2(arg1) {\n\tvar tmp = arg1;\n\tfor(var i=0; i<3; i++)\n\t\treturn tmp++;\n\treturn arg1;\n}","function test2_while1(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp)\n\t\ttmp--;\n\treturn tmp;\n}","function test2_while2(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp < 10) {\n\t\ttmp = tmp+1;\n\t}\n\treturn tmp;\n}","function test2_while3(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp < 10) {\n\t\tif (tmp == 4) break;\n\t\ttmp++;\n\t}\n\treturn tmp;\n}","function test2_do_while4(arg1) {\n\tvar tmp = arg1;\n\tdo {\n\t\tif (tmp == 5) break;\n\t\ttmp++;\n\t} while(tmp < 10);\n\treturn tmp;\n}","function test2_switch1(arg1, arg2) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; break;\n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\";\n\t}\n\treturn tmp;\n}","function test2_switch2(arg1) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; break;\n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\"; break;\n\t}\n\treturn tmp;\n}","function test2_switch3(arg1) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; \n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\"; break;\n\t}\n\treturn tmp;\n}","function test3a(arg1) {\n\treturn arg1.a;\n}","function test3b(arg1) {\n\treturn arg1[1];\n}","function test3c(arg1) {\n\treturn arg1.a[2];\n}","function test3d(arg1) {\n\treturn arg1.a.b[1].length;\n}","function test3e(arg1) {\n\tthis.test3e_tmp1 = arg1+1;\n\treturn this.test3e_tmp1;\n}","function test3f(arg1, arg2) {\n\treturn arg1[arg2];\n}","function test4_try1(arg1) {\n\ttry {\n\t\tthrow '123';\n\t} catch(ex) {\n\t\treturn ex;\n\t}\n\treturn arg1;\n}","function test4_forin1(arg1) {\n\tfor(var f in arg1)\n\t\tif (f == 'bbb') return f;\n}","function test4_forin2(arg1) {\n\tfor(var f in arg1)\n\t\tif (f == 'bbb') break;\n\treturn arg1[f]\n}","function test9a(arg1) {\n\tvar func = function(){\n\t\treturn arg1;\n\t};\n\treturn func();\n}","function test9a(arg1) {\n\tvar func = function(){\n\t\treturn arg1;\n\t};\n\treturn func();\n}","function test9b(arg1) {\n\treturn JSON.stringify(arg1);\n}","function test9b2(arg1) {\n\treturn localStorage.getItem(arg1);\n}","function test9c(arg1) {\n\treturn new Date(arg1);\n}","function test9c2(arg1) {\n\treturn (new Date(arg1)).toString();\n}"];
-
-jsdbg.step_limit = 1;
-
-jsdbg.breakpoints = {};
-
-jsdbg.func_id = 37;
-
-jsdbg.code = ["\nfunction test9c2(","arg1","){","\n\tvar ctx = (window.jsdbg ? jsdbg.ctx : new Ctx());","\n\tvar t = ctx.__t;","\n\tif(ctx.__ip == 0) {","\n\t\tctx.__func_start(\"test9c2\", 37);","\n\t\tctx.arguments = arguments;","\n\t\tctx.arg1 = arguments[0];","\n\t}","\n\tfor(var _prt_cnt=20;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){","\n\t\tcase 0:"," ctx.__next_step(330049);\n\t\tcase 330049: t[0] = ctx.__new(Date, ctx.arg1);"," ctx.__next_step(330060);\n\t\tcase 330060: t[0] = t[0].toString.__jsdbg_call0(t[0]);"," ctx.__next_step(260061);\n\t\tcase 260061: ctx.__func_end(\"test9c2\"); return t[0];","\n\t\tdefault: ctx.__func_end(\"test9c2\"); return;","\n\t}} catch(ex) {\n\t\tif(ex == \"step_limit=0!\") throw ex;\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}","\n\tif(_prt_cnt == 0) throw new Error(\"Infinity loop detected! (_prt_cnt == 0)\");","\n}"];
-
-jsdbg.tmp = 0;
-
-jsdbg.func_name = [];
-
-jsdbg.break_ip = undefined;
-
-jsdbg.continue_ip = undefined;
-
-jsdbg.scope = [];
-
-jsdbg.ctx = {"__ip":250051,"__t":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"__catch_block":{},"__func":"test3e","__func_id":27,"arguments":{}};
 
 jsdbg.prototype.test1 = function test1() {
 	return 1;

@@ -218,45 +218,63 @@ function jsdbg_ide_onclick(event, target) {
 		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
 		var win = document.getElementById(win_id);
 		var func_name = win.dataset.funcName.replace('prototype.', '');
-		var editor1 = code_editor('#'+win_id+' .c-code_editor-textarea');
-		var cursor_pos = editor1.selection.getCursor();
-		var text_offset = editor1.session.doc.positionToIndex(cursor_pos);
+		var editor = code_editor('#'+win_id+' .c-code_editor-textarea');
+		var cursor_pos = editor.selection.getCursor();
+		var text_offset = editor.session.doc.positionToIndex(cursor_pos);
 console.log(cursor_pos, text_offset);
+
+		var new_code = editor.getValue();
+		var function_header = new_code.match(/^function ([_0-9a-zA-Z]+) *\(/);
+		var prototype_name = win.dataset.prototypeName;
+		var func_name = win.dataset.funcName;
+
+		// несуществующий прототип/класс?
+		if(!window[prototype_name]) 
+			return alert('window['+prototype_name+'] not found!');
 		
-		// начнём список breakpoints для этой функции
-		if (win.dataset.func_name in jsdbg.breakpoints == false)
-			jsdbg.breakpoints[func_name] = [];
+		// возмём саму функцию
+		var func = eval('(window["'+prototype_name+'"].'+func_name+')');
+		
+		if(!func) return alert('window['+prototype_name+'].'+func_name+' not found!');
+		
+		// начнём список breakpoints для этой функции/метода
+		if(!func.__jsdbg_breakpoints) {
+			func.__jsdbg_breakpoints = {};
+			
+			// если скомпилен, то привяжем к компиляному тоже список 
+			if(func.__jsdbg_id)
+				jsdbg.compiled[func.__jsdbg_id] = func.__jsdbg_breakpoints;
+		}
 		
 		// проверим на существующий breakpoint в месте курсора
-		if(jsdbg.breakpoints[func_name].indexOf(text_offset) > -1) 
+		if(func.__jsdbg_breakpoints[text_offset]) 
 		{
 			// если уже есть breakpoint в этом месте, то удалим
-			jsdbg.breakpoints[func_name].splice(
-				jsdbg.breakpoints[func_name].indexOf(text_offset));
-			
+			delete func.__jsdbg_breakpoints[text_offset];
+
 			// удалим маркер
-			var markers = editor1.session.getMarkers();
+			var markers = editor.session.getMarkers();
 			for(var f in markers)
 				if(markers[f].range
 				&& markers[f].range.start.row == cursor_pos.row 
 				&& markers[f].range.start.column == cursor_pos.column)
-					editor1.session.removeMarker(f);
+					editor.session.removeMarker(f);
 			
 			return;
 		}
+		else {
+			// добавим breakpoint
+			func.__jsdbg_breakpoints[text_offset] = true;
 		
-		// добавим breakpoint
-		jsdbg.breakpoints[func_name].push(text_offset);
-		
-		// добавим маркер
-		var Rng = ace.require("ace/range").Range;
-		editor1.session.addMarker(new Rng(cursor_pos.row, cursor_pos.column, cursor_pos.row, cursor_pos.column+1), 'jsdbg-ide-ace-breakpoint', 'text', false);
-		
-return;
-		
+			// добавим маркер
+			var Rng = ace.require("ace/range").Range;
+			editor.session.addMarker(new Rng(cursor_pos.row, cursor_pos.column, cursor_pos.row, cursor_pos.column+1), 'jsdbg-ide-ace-breakpoint', 'text', false);
+		}
+
+		/*
 		var atom_alphabet = 
 		"qwfpgjluyarstdhneiozxcvbkmQWFPGJLUYARSTDHNEIOZXCVBKM" + // Latin
-		"-+*/%<>=!|&" + // arithmetic + logic
+		"-+/%<>=!|&" + // arithmetic + logic
 		":#'`" + // symbol chars + quote + backquote
 		"яжфпгйлуыюшщарстдхнеиоэзчцвбкмъьЯЖФПГЙЛУЫЮШЩАРСТДХНЕИОЭЗЧЦВБКМЬЪ" + // Cyrillic
 		"_.,?@~"+
@@ -285,7 +303,7 @@ return;
 		
 		// включим подсветку breakpoints
 		editor1.selectionEnd = editor1.selectionStart;
-		html_onmouse({type:"mouseover", target:trg1});
+		html_onmouse({type:"mouseover", target:trg1});*/
 	}
 
 	// cmd_code_editor_inspect_it
@@ -2697,12 +2715,12 @@ jsdbg_ide_onclick.css_styles =
 "#ide_main_window > .ace_editor { border-top:26px solid transparent; display:block; }\n"+
 ".jsdbg-ide-class-browser .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
 ".jsdbg-ide-debugger .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
-".jsdbg-ide-class-browser .win-header { padding: 10px !important; }\n"
+".jsdbg-ide-class-browser .win-header { padding: 10px !important; }\n"+
 
 ".jsdbg-ide-class-browser optgroup.selected { }\n"+
 ".jsdbg-ide-ace-breakpoint { background: red; position: absolute; }\n"+
 ".dbg_readonly_code .c-code_editor { background-color: #ffa; }\n"+
-".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }\n";
+".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }\n"+
 "";
 
 win_onmouse.win_css_styles = 
