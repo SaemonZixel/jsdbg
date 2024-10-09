@@ -28,13 +28,14 @@ Ctx.prototype.__next_step = function (label) {
 		}
 	}
 	
-	if(jsdbg.breakpoints[this.__func]) {
-		for(var i=0; i<jsdbg.breakpoints[this.__func].length; i++) {
-			var brk = jsdbg.breakpoints[this.__func];
+	if(this.this[this.__func].__jsdbg_breakpoints) {
+		var brk_list = this.this[this.__func].__jsdbg_breakpoints;
+		for(var i=0; i<brk_list.length; i++) {
+			var brk = brk_list[i];
 			var start = Math.floor(this.__ip / 10000);
 			var end = this.__ip % 10000;
 			if(start <= brk && end >= brk)
-				throw new UnknownError("breakpoint!");
+				throw "breakpoint!";
 		}
 	}
 	
@@ -149,31 +150,161 @@ Ctx.prototype.__new = function ()
 	var new_obj = Object.create(arguments[0].prototype);
 	switch(arguments.length) {
 		case 1:
-			return arguments[0].__jsdbg_call0(new_obj);
+			arguments[0].__jsdbg_call0(new_obj); break;
 		case 2:
-			return arguments[0].__jsdbg_call1(new_obj, arguments[1]);
+			arguments[0].__jsdbg_call1(new_obj, arguments[1]); break;
 		case 3:
-			return arguments[0].__jsdbg_call2(new_obj, arguments[1], arguments[2]);
+			arguments[0].__jsdbg_call2(new_obj, arguments[1], arguments[2]); break;
 		case 4:
-			return arguments[0].__jsdbg_call3(new_obj, arguments[1], arguments[2], arguments[3]);
+			arguments[0].__jsdbg_call3(new_obj, arguments[1], arguments[2], arguments[3]); break;
 		case 5:
-			return arguments[0].__jsdbg_call4(new_obj, arguments[1], arguments[2], arguments[3], arguments[4]);
+			arguments[0].__jsdbg_call4(new_obj, arguments[1], arguments[2], arguments[3], arguments[4]); break;
 		case 6:
-			return arguments[0].__jsdbg_call5(new_obj, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+			arguments[0].__jsdbg_call5(new_obj, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]); break;
 		case 7:
-			return arguments[0].__jsdbg_call6(new_obj, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
+			arguments[0].__jsdbg_call6(new_obj, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]); break;
 		default:
 			throw new Error('not implemented yet!');
 	}
+	return new_obj;
 };
 
-if(!window['jsdbg']) function jsdbg(){};
+Ctx.prototype.__func_call = function __func_call(func_, this_) 
+{
+		if (func_ == undefined) throw 'Function/method is undefined!';
+	
+		// компилируем функцию если надо
+		if( ! func_.__jsdbg_compiled && ! func_.__jsdbg_id)
+			jsdbg.compileFunc(func_, this_);
+		
+		// создаём новый контекст для вызываемой функции/метода
+		if(!this.__down) {
+			this.__down = new Ctx();
+			this.__down.__up = this;
+			this.__down.__callee = func_;
+		}
+		jsdbg.ctx = this.__down;
+			
+		// jsdbg.step_limit = 99;
+		
+		// уже скомпилированная функция (обычно anonymous)
+		var func = func_.__jsdbg_id ? jsdbg.compiled[func_.__jsdbg_id] : func_;
+		
+		switch(arguments.length) {
+			case 0: 
+				throw 'Ctx.prototype.__func_call need one or more agruments!';
+			case 1:
+				var result = func.call(window); break;
+			case 2:
+				var result = func.call(arguments[1]); break;
+			case 3:
+				var result = func.call(arguments[1], arguments[2]); break;
+			case 4:
+				var result = func.call(arguments[1], arguments[2], arguments[3]); break;
+			case 5:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4]); break;
+			case 6:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]); break;
+			default:
+				alert('Ctx.prototype.__func_call: Not implemented yet! '+arguments.length);
+				throw new Error('Ctx.prototype.__func_call: Not implemented yet! '+arguments.length);
+		}
+		
+		// удаляем контекст для вызваной функции/метода
+		if (this.__down) {
+			delete this.__down.__up;
+			delete this.__down;
+		}
+		jsdbg.ctx = this;
+		
+		return result;
+};
+
+Ctx.prototype.__restart = function __restart() {
+	this.__ip = 0;
+	this.__t = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined];
+	this.__exception = undefined;
+	this.__catch_block = {};
+	
+	// перезапускаем функцию/метод
+	var old_ctx = jsdbg.ctx, old_step_limit = jsdbg.step_limit;
+	jsdbg.ctx = this;
+	jsdbg.step_limit = 1;
+	
+	try {
+	switch(this.arguments.length) {
+		case 0:
+			jsdbg.compiled[this.__func_id].call(this.this);
+			break;
+		case 1: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0]); 
+			break;
+		case 2: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1]); 
+			break;
+		case 3: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2]); 
+			break;
+		case 4: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3]); 
+			break;
+		case 5: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4]); 
+			break;
+		case 6: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5]); 
+			break;
+		case 7: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4]. this.arguments[5], this.arguments[6]); 
+			break;
+		default:
+			debugger;
+	}
+	} catch(ex){
+		if (ex == 'step_limit=0!') return;
+		throw ex;
+	}
+	
+	jsdbg.ctx = old_ctx;
+	jsdbg.step_limit = old_step_limit;
+};
+
+if(!window['jsdbg']) function jsdbg()
+{
+	var func = arguments[0];
+	var this_ = arguments[1]||window;
+	var args = [];
+	while(arguments.length > args.length+2) args.push(arguments[args.length+2]);
+	
+	// компилируем функцию если надо
+	if(!func.__jsdbg_id) jsdbg.compileFunc(func, this_);
+	
+	// новый контекст
+	jsdbg.ctx = new Ctx();
+	
+	// выполняем максимально долго
+	jsdbg.step_limit = 999;
+	
+	try {
+		jsdbg.compiled[func.__jsdbg_id].call(this_, func, args);
+	}
+	catch(ex) {
+		if(jsdbg_ide_onclick)
+			jsdbg_ide_onclick({type: 'open_debugger', ctx: jsdbg.ctx});
+			
+		if (ex != 'step_limit=0!' && ex != 'breakpoint!') {
+			alert(ex);
+			throw ex;
+		}
+	}
+};
 
 jsdbg.init = function () 
 {
 	this.next_id = 1;
 	this.compiled = []; // скомпилированые функции
 	this.source = []; // исходный код скопилированых функций
+	this.funcs = []; // сами функции или методы с объектом this
 	this.step_limit = undefined; // неограниченое количество шагов
 	this.breakpoints = {};
 
@@ -181,7 +312,7 @@ jsdbg.init = function ()
 	{
 		// компилируем функцию если надо
 		if(!this.__jsdbg_compiled)
-			jsdbg.compileFunc(this);
+			jsdbg.compileFunc(this, arguments[0]);
 			
 		// новый контекст
 		jsdbg.ctx = new Ctx();
@@ -215,55 +346,74 @@ jsdbg.init = function ()
 	// создадим прокси-функции
 	Function.prototype.__jsdbg_call0 = function(){ 
 		if (!this.__jsdbg_id && !this.__jsdbg_compiled) {
-			if(jsdbg.compileFunc(this) == false) {
+			if(jsdbg.compileFunc(this, arguments[0]) == false) {
 				// не удалось скомпилировать, возможно [native]
 				return this.call(arguments[0]);
 			}
 		}
-		if(!jsdbg.ctx.__down) {
-			jsdbg.ctx.__down = new Ctx();
-			jsdbg.ctx.__down.__up = jsdbg.ctx;
-			jsdbg.ctx.__callee = this;
+		var curr_ctx = jsdbg.ctx;
+		if(!curr_ctx.__down) {
+			curr_ctx.__down = new Ctx();
+			curr_ctx.__down.__up = curr_ctx;
+			curr_ctx.__callee = this;
 		}
-		jsdbg.ctx = jsdbg.ctx.__down;
+		jsdbg.ctx = curr_ctx.__down;
 		if (this.__jsdbg_parent_ctx) 
 			jsdbg.ctx.__proto__ = this.__jsdbg_parent_ctx;
 		if (this.__jsdbg_compiled)
-			return this.call(arguments[0]);
+			var result = this.call(arguments[0]);
 		else
-			return (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0]);
+			var result = (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0]);
+		
+		// возвращаем обратно контекст
+		jsdbg.ctx = curr_ctx;
+		
+		return result;
 	};
 	
 	Function.prototype.__jsdbg_call1 = function(){ 
 		if (!this.__jsdbg_id && !this.__jsdbg_compiled) {
-			if(jsdbg.compileFunc(this) == false) {
+			if(jsdbg.compileFunc(this, arguments[0]) == false) {
 				// не удалось скомпилировать, возможно [native]
 				return this.call(arguments[0], arguments[1]);
 			}
 		}
-		if(!jsdbg.ctx.__down) {
-			jsdbg.ctx.__down = new Ctx();
-			jsdbg.ctx.__down.__up = jsdbg.ctx;
-			jsdbg.ctx.__callee = this;
+		var curr_ctx = jsdbg.ctx;
+		if(!curr_ctx.__down) {
+			curr_ctx.__down = new Ctx();
+			curr_ctx.__down.__up = curr_ctx;
+			curr_ctx.__callee = this;
 		}
-		jsdbg.ctx = jsdbg.ctx.__down;
-		return (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0], arguments[1]);
+		jsdbg.ctx = curr_ctx.__down;
+		var result = (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0], arguments[1]);
+		
+		// возвращаем обратно контекст
+		jsdbg.ctx = curr_ctx;
+		
+		return result;
 	};
 	
 	Function.prototype.__jsdbg_call2 = function(){ 
 		if (!this.__jsdbg_id && !this.__jsdbg_compiled) {
-			if(jsdbg.compileFunc(this) == false) {
+			if(jsdbg.compileFunc(this, arguments[0]) == false) {
 				// не удалось скомпилировать, возможно [native]
 				return this.call(arguments[0], arguments[1], arguments[2]);
 			}
 		}
-		if(!jsdbg.ctx.__down) {
-			jsdbg.ctx.__down = new Ctx();
-			jsdbg.ctx.__down.__up = jsdbg.ctx;
-			jsdbg.ctx.__callee = this;
+		
+		var curr_ctx = jsdbg.ctx;
+		if(!curr_ctx.__down) {
+			curr_ctx.__down = new Ctx();
+			curr_ctx.__down.__up = curr_ctx;
+			curr_ctx.__callee = this;
 		}
-		jsdbg.ctx = jsdbg.ctx.__down;
-		return (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0], arguments[1], arguments[2]);
+		jsdbg.ctx = curr_ctx.__down;
+		var result = (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0], arguments[1], arguments[2]);
+		
+		// возвращаем обратно контекст
+		jsdbg.ctx = curr_ctx;
+		
+		return result;
 	};
 	
 	var args = [", arguments[1]", ", arguments[2]"];
@@ -272,16 +422,19 @@ jsdbg.init = function ()
 		args.push(", arguments["+arg_count+"]");
 		Function.prototype['__jsdbg_call'+arg_count] = eval('(function(){\n'+ 
 		'	if (!this.__jsdbg_id && !this.__jsdbg_compiled) {\n'+
-		'		if(jsdbg.compileFunc(this) == false) {\n'+
+		'		if(jsdbg.compileFunc(this, arguments[0]) == false) {\n'+
 		'			return this.call(arguments[0]'+args.join('')+');}\n'+
 		'	}\n'+
-		'	if(!jsdbg.ctx.__down) {\n'+
-		'		jsdbg.ctx.__down = new Ctx();\n'+
-		'		jsdbg.ctx.__down.__up = jsdbg.ctx;\n'+
-		'		jsdbg.ctx.__callee = this;\n'+
+		'   var curr_ctx = jsdbg.ctx;\n'+
+		'	if(!curr_ctx.__down) {\n'+
+		'		curr_ctx.__down = new Ctx();\n'+
+		'		curr_ctx.__down.__up = curr_ctx;\n'+
+		'		curr_ctx.__callee = this;\n'+
 		'	}\n'+
-		'	jsdbg.ctx = jsdbg.ctx.__down;\n'+
-		'	return (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0]'+args.join('')+');\n'+
+		'	jsdbg.ctx = curr_ctx.__down;\n'+
+		'	var result = (jsdbg.compiled[this.__jsdbg_id]||this).call(arguments[0]'+args.join('')+');\n'+
+		'   jsdbg.ctx = curr_ctx;\n'+
+		'   return result;\n'+
 		'})');
 	}
 };
@@ -295,6 +448,11 @@ jsdbg.compile = function (src, id){
 	this.break_ip = undefined;
 	this.continue_ip = undefined;
 	this.scope = [];
+	
+	// acorn не любит пустые функции/методы
+	if(src.match(/function\s*\([^)]*\)\s*{[^}]*}/)) {
+		return src;
+	}
 	
 	var ast = acorn.parse(src);
 	
@@ -339,6 +497,9 @@ jsdbg.compileAcornStmt = function (node) {
 		this.code.push('\n\t\tctx.arguments = arguments;');
 		for(var i=0;i<node.params.length;i++)
 			code.push('\n\t\tctx.'+node.params[i].name+' = arguments['+i+'];');
+		
+		// зарегистрируем this
+		this.code.push('\n\t\tctx.this = this;');
 			
 		this.code.push('\n\t}');
 			
@@ -419,6 +580,13 @@ jsdbg.compileAcornStmt = function (node) {
 		code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ctx.__next_step('+
 			this.break_ip+'); break;');
+	}
+	
+	else if(node.type == "ContinueStatement")
+	{
+		code.push(' ctx.__next_step('+
+		(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ctx.__next_step('+
+		this.continue_ip+'); break;');
 	}
 	
 	else if(node.type == "ExpressionStatement") {
@@ -737,8 +905,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		this.code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+
 			(node.start*10000+node.end)+': t['+this.tmp+'] = '+
-			func_frag[0]+'.__jsdbg_call'+args.length + 
-			'(' + func_frag[1] + (args.length?', ':'') +
+			'ctx.__func_call('+
+			func_frag[0] + ', ' + func_frag[1] + (args.length?', ':'') +
 			args.join(', ') +
 			');');
 		
@@ -1085,7 +1253,7 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 	}
 };
 
-jsdbg.compileFunc = function (func) {
+jsdbg.compileFunc = function (func, this_) {
 	if (typeof(func) == 'function') try {
 		var src = func.toString();
 		if(src.length < 150 && src.indexOf('[native code]') > 0) {
@@ -1099,6 +1267,7 @@ jsdbg.compileFunc = function (func) {
 		var compiled_src = jsdbg.compile(func.toString(), new_id);
 		jsdbg.compiled[new_id] = eval('('+compiled_src+')');
 		jsdbg.source[new_id] = func.toString();
+		jsdbg.funcs[new_id] = [func, this_];
 		func.__jsdbg_id = new_id;
 		return compiled_src;
 	} catch(ex) {
@@ -1152,7 +1321,7 @@ jsdbg.debug = function (src, _this, _arguments)
 		jsdbg.compiled[func.__jsdbg_id].call(_this||window, args[0]||undefined, args[1]||undefined);
 	} 
 	catch(ex) {
-		if (ex != 'step_limit=0!') 
+		if (ex != 'step_limit=0!' && ex != 'breakpoint!') 
 			throw ex;
 	}
 	
@@ -1174,7 +1343,7 @@ jsdbg.debugFunc = function (func, _this, _arguments)
 		jsdbg.compiled[func.__jsdbg_id].call(_this||window, args[0]||undefined, args[1]||undefined);
 	}
 	catch(ex) {
-		alert(ex);
+		setTimeout(function(){ alert(ex); }, 50);
 		
 		if(jsdbg_ide_onclick)
 			jsdbg_ide_onclick({type: 'open_debugger', ctx: jsdbg.ctx});
@@ -1193,15 +1362,31 @@ jsdbg.stepIn = function () {
 	}
 };
 
-jsdbg.stepOver = function () {
-	jsdbg.step_limit = 1;
+jsdbg.stepOver = function () 
+{
+	var curr_ctx = jsdbg.ctx;
 	
-	try {
-		jsdbg.compiled[jsdbg.ctx.__func_id]();
-	} 
-	catch(ex) {
-		if (ex == 'step_limit=0!') return;
-		throw ex;
+	for(prt_cnt=1000; prt_cnt; prt_cnt--) {
+		try {
+			jsdbg.step_limit = 1;
+			jsdbg.compiled[jsdbg.ctx.__func_id]();
+		} 
+		catch(ex) {
+			if (ex != 'step_limit=0!') throw ex;
+		}
+		
+		// не опускались ниже -> шаг выполнен
+		if(jsdbg.ctx == curr_ctx) break;
+		
+		// проверим цепочку контекстов наверх
+		for(var tmp_ctx = jsdbg.ctx; tmp_ctx.__up; tmp_ctx = tmp_ctx.__up)
+			if(tmp_ctx == curr_ctx) break;
+			
+		// нашли наш контекст в цепочке -> продолжим выполнение
+		if(tmp_ctx == curr_ctx) continue;
+		
+		// в цепорке нет нашего контекста -> прерываем выполнение
+		else break;
 	}
 };
 
@@ -1217,31 +1402,31 @@ jsdbg.continue = function () {
 	}
 };
 
-jsdbg.next_id = 38;
-
-jsdbg.compiled = [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null];
-
-jsdbg.source = [null,"function test1a() {\n\treturn 1+1;\n}","function test1b(arg1, arg2) {\n\treturn arg1+arg2;\n}","function test1c(arg1, arg2) {\n\treturn arg1 || arg2;\n}","function test1ca(arg1, arg2) {\n\targ1++;\n\treturn arg1;\n}","function test1cb(arg1, arg2) {\n\targ1--;\n\treturn arg1;\n}","function test1cc(arg1, arg2) {\n\treturn arg1++;\n}","function test1cd(arg1, arg2) {\n\treturn ++arg1;\n}","function test1d(arg1) {\n\treturn [1,\"two\", 3.1, undefined, true, false, null];\n}","function test1e(arg1) {\n\treturn {a: 1, b: 'two', \"c\": 3.1, e: undefined, \"f f\": true, _g: false, _123: null, __arg1: arg1};\n}","function test1f(arg1) {\n\targ1.a += 1; // 1 -> 2\n\targ1.b -= 1; // 12 -> 11\n\targ1.c *= 2; // 10 -> 20\n\targ1.d /= 3; // 12 -> 4\n\targ1.e &= 4; // 15 -> 4\n\targ1.f |= 8; // 4 -> 12\n\targ1.g ^= 5; // 12 -> 9\n\targ1.h %= 3; // 5 -> 2\n\treturn arg1;\n}","function test2_if1(arg1) {\n\tif (arg1)\n\t\treturn 1;\n\telse\n\t\treturn 2;\n}","function test2_if2(arg1) {\n\tif (arg1) {\n\t\treturn 1;\n\t}\n\telse {\n\t\treturn 2;\n\t}\n}","function test2_if3(arg1) {\n\tif (arg1) return 1;\n\treturn 2;\n}","function test2_for1(arg1) {\n\tvar tmp = arg1;\n\tfor(var i=0; i<3; i++)\n\t\ttmp++;\n\treturn tmp;\n}","function test2_for2(arg1) {\n\tvar tmp = arg1;\n\tfor(var i=0; i<3; i++)\n\t\treturn tmp++;\n\treturn arg1;\n}","function test2_while1(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp)\n\t\ttmp--;\n\treturn tmp;\n}","function test2_while2(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp < 10) {\n\t\ttmp = tmp+1;\n\t}\n\treturn tmp;\n}","function test2_while3(arg1) {\n\tvar tmp = arg1;\n\twhile(tmp < 10) {\n\t\tif (tmp == 4) break;\n\t\ttmp++;\n\t}\n\treturn tmp;\n}","function test2_do_while4(arg1) {\n\tvar tmp = arg1;\n\tdo {\n\t\tif (tmp == 5) break;\n\t\ttmp++;\n\t} while(tmp < 10);\n\treturn tmp;\n}","function test2_switch1(arg1, arg2) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; break;\n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\";\n\t}\n\treturn tmp;\n}","function test2_switch2(arg1) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; break;\n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\"; break;\n\t}\n\treturn tmp;\n}","function test2_switch3(arg1) {\n\tvar tmp;\n\tswitch(arg1) {\n\t\tcase 1: tmp = \"one\"; \n\t\tcase 2: tmp = \"two\"; break;\n\t\tdefault: tmp = \"many\"; break;\n\t}\n\treturn tmp;\n}","function test3a(arg1) {\n\treturn arg1.a;\n}","function test3b(arg1) {\n\treturn arg1[1];\n}","function test3c(arg1) {\n\treturn arg1.a[2];\n}","function test3d(arg1) {\n\treturn arg1.a.b[1].length;\n}","function test3e(arg1) {\n\tthis.test3e_tmp1 = arg1+1;\n\treturn this.test3e_tmp1;\n}","function test3f(arg1, arg2) {\n\treturn arg1[arg2];\n}","function test4_try1(arg1) {\n\ttry {\n\t\tthrow '123';\n\t} catch(ex) {\n\t\treturn ex;\n\t}\n\treturn arg1;\n}","function test4_forin1(arg1) {\n\tfor(var f in arg1)\n\t\tif (f == 'bbb') return f;\n}","function test4_forin2(arg1) {\n\tfor(var f in arg1)\n\t\tif (f == 'bbb') break;\n\treturn arg1[f]\n}","function test9a(arg1) {\n\tvar func = function(){\n\t\treturn arg1;\n\t};\n\treturn func();\n}","function test9a(arg1) {\n\tvar func = function(){\n\t\treturn arg1;\n\t};\n\treturn func();\n}","function test9b(arg1) {\n\treturn JSON.stringify(arg1);\n}","function test9b2(arg1) {\n\treturn localStorage.getItem(arg1);\n}","function test9c(arg1) {\n\treturn new Date(arg1);\n}","function test9c2(arg1) {\n\treturn (new Date(arg1)).toString();\n}"];
-
-jsdbg.step_limit = 1;
-
-jsdbg.breakpoints = {};
-
-jsdbg.func_id = 37;
-
-jsdbg.code = ["\nfunction test9c2(","arg1","){","\n\tvar ctx = (window.jsdbg ? jsdbg.ctx : new Ctx());","\n\tvar t = ctx.__t;","\n\tif(ctx.__ip == 0) {","\n\t\tctx.__func_start(\"test9c2\", 37);","\n\t\tctx.arguments = arguments;","\n\t\tctx.arg1 = arguments[0];","\n\t}","\n\tfor(var _prt_cnt=20;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){","\n\t\tcase 0:"," ctx.__next_step(330049);\n\t\tcase 330049: t[0] = ctx.__new(Date, ctx.arg1);"," ctx.__next_step(330060);\n\t\tcase 330060: t[0] = t[0].toString.__jsdbg_call0(t[0]);"," ctx.__next_step(260061);\n\t\tcase 260061: ctx.__func_end(\"test9c2\"); return t[0];","\n\t\tdefault: ctx.__func_end(\"test9c2\"); return;","\n\t}} catch(ex) {\n\t\tif(ex == \"step_limit=0!\") throw ex;\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}","\n\tif(_prt_cnt == 0) throw new Error(\"Infinity loop detected! (_prt_cnt == 0)\");","\n}"];
-
-jsdbg.tmp = 0;
-
-jsdbg.func_name = [];
-
-jsdbg.break_ip = undefined;
-
-jsdbg.continue_ip = undefined;
-
-jsdbg.scope = [];
-
-jsdbg.ctx = {"__ip":250051,"__t":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"__catch_block":{},"__func":"test3e","__func_id":27,"arguments":{}};
+jsdbg.stepOut = function stepOut() 
+{
+	// невозможно выйти наверх т.к. уже наверху
+	if(!jsdbg.ctx.__up)	return;
+	
+	// соберём список контекстов выше
+	var list_up_ctx = [];
+	for(var up_ctx = jsdbg.ctx.__up; up_ctx.__up; up_ctx = up_ctx.__up)
+		list_up_ctx.push(up_ctx);
+	
+	// идём по шагам, пока не выйдем в верхние контексты
+	for(var prt_cnt=1000; prt_cnt; prt_cnt--) {
+		try {
+			jsdbg.step_limit = 1;
+			jsdbg.compiled[jsdbg.ctx.__func_id]();
+		} 
+		catch(ex) {
+			if (ex != 'step_limit=0!') throw ex;
+		}
+		
+		// ищем текущий контекст в нашем списке контекстов выше
+		for(var i=0; i<list_up_ctx.length; i++)
+			if(list_up_ctx[i] == jsdbg.ctx) return;
+	}
+};
 
 jsdbg.prototype.test1 = function test1() {
 	return 1;
@@ -1250,5 +1435,7 @@ jsdbg.prototype.test1 = function test1() {
 jsdbg.prototype.test0 = function test0() {
 	
 };
+
+
 
 jsdbg.init();

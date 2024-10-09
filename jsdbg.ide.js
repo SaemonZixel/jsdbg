@@ -1,7 +1,7 @@
 /* 
  * JSDbg.js IDE
  * 
- * Version: 1.1
+ * Version: 0.6
  * License: MIT
  * 
  *  Copyright (c) 2020-2024 Saemon Zixel <saemonzixel@gmail.com>
@@ -76,6 +76,12 @@ function jsdbg_ide_onclick(event, target) {
 				editor.setAutoScrollEditorIntoView(true);
 				editor.container.className += ' c-code_editor-textarea';
 				editor.dataset.aceInitDone = true;
+			};
+			editor.setSelectionRange = function(offset_start, offset_end){
+				editor.selection.setSelectionRange({
+					start: editor.session.doc.indexToPosition(offset_start),
+					end: editor.session.doc.indexToPosition(offset_end)
+				});
 			}
 		}
 		else
@@ -95,144 +101,40 @@ function jsdbg_ide_onclick(event, target) {
 			},
 			setSelectionRange: function(start, end){
 				this.textarea.setSelectionRange(start, end);
-			}
+			},
+			blur: function() { this.textarea.blur(); },
+			focus: function() { this.textarea.focus(); }
 		}
 		return editor;
 	};
 	window.code_editor = code_editor;
 	
-	var break_point_diacritic = '&#860;&#865;';
-	
-	// cmd_code_editor_save
-	// TODO save constructor()
-	// TODO target not my
-	// TODO не сохраняет изменения в дебагере
-	if(ev.type == "click" && (trg1.className.indexOf('cmd_code_editor_save') > -1 || trg1p.className.indexOf('cmd_code_editor_save') > -1)) {
- 		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
-		var win = document.getElementById(win_id);
-		var editor = code_editor("#"+win_id+" .c-code_editor-textarea");
-		var new_code = editor.getValue();
-		var function_header = new_code.match(/^function ([_0-9a-zA-Z]+) *\(/);
-		var file_name = win.dataset.fileName || '';
-// 		file_name = file_name == "(new...)" ? "(no file)" : file_name;
-		var prototype_name = win.dataset.prototypeName;
-		var func_name = win.dataset.funcName;
-
-		// безымянная функция метода
-		if(!function_header && func_name) function_header = ['', func_name.replace(/prototype./, '')];
-
-		if (prototype_name == '' && func_name)
-			return alert('Error! prototype_name = "" and func_name = '+func_name);
-
-		// попытались создать быземянный метод
-		if (prototype_name && !function_header && new_code.match(/^function *\(/)) {
-			return alert("Error! Method without name detected!");
-		}
-		
-		// не выбран никакой метод/класс -> просто сохраняем всё
-		if (!function_header || !function_header[1]) {
-			/* skip */
-		}
-
-		// конструктор или новый прототип?
-		else if (prototype_name == function_header[1]
-		|| prototype_name == ''
-		) {
-			prototype_name = function_header[1];
-			
-			// сохранять все старые методы прототипа
-			var old_class = window[function_header[1]];
-			var old_class_prototype = window[function_header[1]].prototype;
-			
-			// обновляем конструктор
-			eval('window.'+function_header[1]+' = '+new_code);
-
-			// восстанавливаем сохранённые методы
-			for(var f in old_class) 
-			if(f != 'prototype' && f in window[prototype_name].__proto__ == false)
-				window[prototype_name][f] = old_class[f];
-// 			for(var f in old_class_prototype)
-// 				window[prototype_name].prototype[f] = old_class_prototype[f];
-			window[prototype_name].prototype = old_class_prototype;
-		}
-			
-		// метод прототипа
-		else {
-			// static/prototype
-			var method_type =  document.getElementById(win_id+"_class_methods").className.match(/selected/) ? '.' : '.prototype.';
-		
-			func_name = function_header[1];	
-			try {
-			eval(prototype_name+method_type+func_name+' = '+new_code+';');
-			} catch(ex) {
-				console.error(ex);
-				alert(ex);
-			}
-		}
-		
-		// сохранить в файл
-		jsdbg_ide_onclick({
-			type: "save_file", 
-			file_name: file_name, 
-// 			file_content: new_code, 
-			target: trg1});
-		
-		// обновим список методов
-		/*jsdbg_ide_onclick({
-			type: 'click', 
-			target: document.querySelector('#'+win_id + "_class_hierarchy option[data-prototype-name='" + prototype_name  +"']")
-		});*/
-		
-		return;
-		
-		
-		// сохранение в дебагере (если это не функция/метод/фрагмент)
-		if(win_id.match(/^jsdbg_debugger_/) && editor.dataset.prototypeName && editor.getAttribute("data-file_name-offset") == "0" && !editor.getAttribute("data-func-name")) {
-			
-			// проверим dbg_readonly_code режим
-			if (document.getElementById(win_id).className.indexOf("dbg_readonly_code") > -1) {
-				alert("Can't save changes because you edit old version of source code!");
-				return;
-			}
-			
-			jsdbg_ide_onclick({
-				type: "save_file", 
-				file_name: file_name, 
-				file_content: new_code, 
-				target: trg1});
-			
-			// делаем restart
-			jsdbg_ide_onclick({
-				type: "click", 
-				target: document.querySelector("#"+win_id+" .cmd_code_editor_restart")
-			});
-			
-			return;
-		}
-		
-		return;
-	}
+	//var break_point_diacritic = '&#860;&#865;';
 
 	// cmd_code_editor_set_breakpoint
 	if(trg1.className.indexOf('cmd_code_editor_set_breakpoint') > -1 || trg1p.className.indexOf('cmd_code_editor_set_breakpoint') > -1) {
 		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
 		var win = document.getElementById(win_id);
-		var func_name = win.dataset.funcName.replace('prototype.', '');
+		// var prototype_name = win.dataset.prototypeName;
+		var method = win.func; // eval('('+prototype_name+'.'+win.dataset.funcName+')');
+		// var func_name = win.dataset.funcName.replace('prototype.', '');
 		var editor1 = code_editor('#'+win_id+' .c-code_editor-textarea');
 		var cursor_pos = editor1.selection.getCursor();
 		var text_offset = editor1.session.doc.positionToIndex(cursor_pos);
 console.log(cursor_pos, text_offset);
-		
-		// начнём список breakpoints для этой функции
-		if (win.dataset.func_name in jsdbg.breakpoints == false)
-			jsdbg.breakpoints[func_name] = [];
+
+		if(!method) return alert('Not found function/method for breakpoint!');
+
+		// начнём список breakpoints для этого метода
+		if ('__jsdbg_breakpoints' in method == false)
+			method.__jsdbg_breakpoints = [];
 		
 		// проверим на существующий breakpoint в месте курсора
-		if(jsdbg.breakpoints[func_name].indexOf(text_offset) > -1) 
+		if(method.__jsdbg_breakpoints.indexOf(text_offset) > -1)
 		{
 			// если уже есть breakpoint в этом месте, то удалим
-			jsdbg.breakpoints[func_name].splice(
-				jsdbg.breakpoints[func_name].indexOf(text_offset));
+			method.__jsdbg_breakpoints.splice(
+				method.__jsdbg_breakpoints.indexOf(text_offset));
 			
 			// удалим маркер
 			var markers = editor1.session.getMarkers();
@@ -246,7 +148,7 @@ console.log(cursor_pos, text_offset);
 		}
 		
 		// добавим breakpoint
-		jsdbg.breakpoints[func_name].push(text_offset);
+		method.__jsdbg_breakpoints.push(text_offset);
 		
 		// добавим маркер
 		var Rng = ace.require("ace/range").Range;
@@ -361,7 +263,7 @@ return;
 	if(trg1.className.indexOf('cmd_code_editor_new_class') > -1 || trg1p.className.indexOf('cmd_code_editor_new_class') > -1) {
 		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
 		var editor = code_editor('#'+win_id+" .c-code_editor-textarea");
-		editor.setValue("function NewClass(){\n\tthis.init();\n}");
+		editor.setValue("function NewClass(){\n\tthis.initialize();\n}");
 		
 		document.querySelector('#'+win_id).dataset.funcName = '';
 		document.querySelector('#'+win_id).dataset.prototypeName = '';
@@ -443,67 +345,7 @@ return;
 			document.querySelector("head").insertBefore(ace_tag, document.querySelector("head > script"));
 		}
 	}
-	
-	// [restore_main_window_content]
-	if(ev.type == "restore_main_window_content" /* || ev.type == "load" && ev.target == document */) {
 
-		// если есть связь с сервером, но нет пароля, запросим тогда и авторизуемся
-		if (document.cookie.indexOf("littlelisp-save-url=") > -1 && document.cookie.indexOf("littlelisp-password") < 0) {
-			var password = prompt("Password:", "abc123");
-			if (password) {
-				var save_url = document.cookie.match(/littlelisp-save-url=([^;]+)/);
-				var xhr = new XMLHttpRequest();
-				xhr.open("POST", decodeURIComponent(save_url[1])+"?action=auth", true); 
-				xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-				xhr.onreadystatechange = function(){ 
-					if(xhr.readyState != 4 || xhr.responseText == "") return;
-					console.log(xhr.responseText);
-					
-					if(xhr.responseText != "ok") alert(xhr.responseText);
-					else document.cookie += "; littlelisp-password="+encodeURIComponent(password);
-						
-					jsdbg_ide_onclick({type: "restore_main_window_content"});
-				};
-				xhr.send("password="+encodeURIComponent(password));
-				
-				return;
-			}
-		}
-		
-		// считаем config
-		try {
-			var config = localStorage["littlelisp_config"];
-			config = JSON.parse(config);
-		}
-		catch(ex) {
-// 			alert(ex);
-			var config = undefined;
-		}
-
-		// если config повреждён или его нет, то создадим новый
-		if(!config) {
-			localStorage["littlelisp_config"] = "{\"last_file\":\"workspace1\"}";
-			config = {last_file: "workspace1"};
-			if("jsdbg_file_workspace1" in localStorage == false)
-				localStorage["jsdbg_file_workspace1"] = document.getElementById('ide_main_window_src').value;
-		}
-		
-		// загрузим список сохранёных файлов
-		jsdbg_ide_onclick({type: "list_files", selected_file: config.last_file});
-		
-		// загрузим в редактор последний редактированный файл
-		jsdbg_ide_onclick({type: "get_file", file_name: config.last_file, onload: function(value){
-			var last_file_content = value;
-			if(typeof last_file_content == "undefined")
-				document.getElementById('ide_main_window_src').value = "";
-			else
-				document.getElementById('ide_main_window_src').value = last_file_content;
-			document.getElementById('ide_main_window_src').focus();
-			
-		}});
-		
-	}
-		
 	// [init_css]
 	if(ev.type == 'init_css') {
 		var style_tag = document.getElementById("jsdbg-ide-js-css");
@@ -581,15 +423,6 @@ return;
 				document.getElementById("ide_main_window_src").scrollTop = parseInt(document.getElementById("ide_main_window_src").getAttribute("data-scrollTop"));
 			}
 		}
-	}
-	
-	// [hide_littlelisp_js_ide]
-	if(ev.type == "hide_littlelisp_js_ide" || (ev.type == "click" && trg1.id == "jsdbg_ide_main_window_show_hide")) {
-		var ide_win = document.getElementById("ide_main_window");
-		if (ide_win) ide_win.style.display = "none";
-		
-		// покажем кнопку
-		(document.getElementById("jsdbg_ide_main_window_show")||{}).innerHTML = "Show IDE";
 	}
 
 	// [list_files]
@@ -680,6 +513,8 @@ return;
 		
 		// содержимое файла
 		var file_content = [];
+		var file_content_inheritances = [];
+		var file_content_inits = [];
 
 		// ищем все прототипы/классы для этого файла
 		var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
@@ -696,24 +531,37 @@ return;
 				file_content.push("if(!window['"+clazz_name+"']) "+clazz.toString()+';');
 			
 			// методы прототипа (static)
-			for(var f in clazz) if(f in clazz.__proto__ == false && f != 'prototype') {
+			for(var f in clazz) if(f in clazz.__proto__ == false && f != 'prototype' ) {
 				if (typeof clazz[f] == 'function')
 					file_content.push(clazz_name+'.'+f+' = '+clazz[f].toString()+';');
-				else
-					file_content.push(clazz_name+'.'+f+' = '+(typeof clazz[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz[f]))+';');
+				// статические свойства не сохраняем (в jsdbg)
+				/*else
+					file_content.push(clazz_name+'.'+f+' = '+(typeof clazz[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz[f]))+';');*/
 			}
 			
 			// методы объекта
-			for(var f in clazz.prototype) if(f in clazz.prototype.__proto__ == false) {
+			for(var f in clazz.prototype)
+			if(f in clazz.prototype.__proto__ == false
+			|| clazz.prototype.__proto__[f] !== clazz.prototype[f]) {
 				if (typeof clazz.prototype[f] == 'function')
 					file_content.push(clazz_name+'.prototype.'+f+' = '+clazz.prototype[f].toString()+';');
+				// свойства в прототипе не сохраняем
 				/* else
 					file_content.push(clazz_name+'.prototype.'+f+' = '+(typeof clazz.prototype[f] == 'undefined' ? 'undefined' : JSON.stringify(clazz.prototype[f]))+';');*/
 			}
 
+			// проверим наследование не от Object
+			if(clazz.prototype.__proto__.constructor != Object) {
+				var superclazz = clazz.prototype.__proto__.constructor.toString().match(/^function ([^(]+)/);
+				if(superclazz) {
+					file_content_inheritances.push(clazz_name+'.prototype.__proto__ = '+superclazz[1]+'.prototype;');
+					file_content_inheritances.push(clazz_name+'.__proto__ = Object.create('+superclazz[1]+', {constructor: {value: '+clazz_name+', writable: true, configurable: true}});');
+				}
+			}
+
 			// если есть метод инициализации класса/прототипа, то его надо будет запустить
 			if(clazz.init) {
-				file_content.push(clazz_name+'.init();');
+				file_content_inits.push(clazz_name+'.init();');
 			}
 			
 		}
@@ -732,7 +580,9 @@ return;
 			if(xhr.readyState != 4) return;
 			alert(xhr.responseText);
 		};
-		xhr.send(file_content.join('\n\n'));
+		xhr.send(file_content.join('\n\n')+
+			'\n\n'+file_content_inheritances.join('\n')+
+			'\n\n'+file_content_inits.join('\n'));
 
 		return;
 
@@ -1032,7 +882,10 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 			// сгенерируем HTML со содержимым объекта
 			var selected_key = ('state_to_load' in ev) ? ev.state_to_load.selected_key : '';
 			for(var f in obj)
-			if(col1_html.length > (root.getAttribute("data-rows-limit")||100)) {
+			if (obj instanceof Ctx && f[0] == '_' && f[1] == '_') {
+				continue;
+			}
+			else if(col1_html.length > (root.getAttribute("data-rows-limit")||100)) {
 				col1_html.push('<div class="c-object_props-key">&nbsp;</div>');
 				col2_html.push('<div class="c-object_props-value">Limit '+(root.getAttribute("data-rows-limit")||100)+' rows excedded!...</div>');
 				break;
@@ -1367,6 +1220,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		'<div id="jsdbg_class_browser_'+id+'_splitter1" class="win-splitter type_vertical"></div>'+
 		
 		'<div id="jsdbg_class_browser_'+id+'_class_object_methods" class="win-area" style="min-wid1th:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
+		'<option id="jsdbg_class_browser_'+id+'_superclass">sepurclass</option>'+
 		'<optgroup id="jsdbg_class_browser_'+id+'_class_methods" label="class (static methods)"></optgroup>'+
 		'<optgroup id="jsdbg_class_browser_'+id+'_object_methods" label="object"></optgroup>'+
 		'</select></div>'+
@@ -1430,7 +1284,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		// выведем классы по файлам
 		var select_classes = optgroup.parentNode;
 		var our_optgroups = {};
-		for(var protoname in prototype_to_file_map) {
+		for(var protoname in prototype_to_file_map) if(typeof prototype_to_file_map[protoname] == 'string') {
 			var file_name = prototype_to_file_map[protoname];
 
 			// создадим optgroup для файла если ещё нет
@@ -1473,11 +1327,12 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		if(clazz.prototype[list[i]] instanceof Function) {
 			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-prototype-name="'+trg1.innerHTML+'" data-func-name="prototype.'+list[i]+'">'+list[i]+'</option>');
 		}
-		if(clazz.prototype && clazz.prototype.__proto__)
+		// ???
+		/*if(clazz.prototype && clazz.prototype.__proto__)
 		for(var meth_name in clazz.prototype.__proto__)
 		if(clazz.prototype.__proto__[meth_name] instanceof Function) {
 			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-prototype-name="'+trg1.innerHTML+'" data-func-name="'+meth_name+'">'+meth_name+'</option>');
-		}
+		}*/
 		methods.sort();
 		document.getElementById(win_id+"_object_methods").innerHTML = methods.join("");
 		
@@ -1494,12 +1349,16 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		// загрузим код прототипа в редактор кода
 		var code_editor = code_editor('#'+win_id+' .c-code_editor-textarea');
 		code_editor.setValue((clazz||'').toString(), -1);
+		// TODO удалить/отобразить breakpoints
 		
 		// сохраним выбранный файл/прототип/метод
 		var win = document.querySelector('#'+win_id);
 		win.dataset.fileName = trg1.dataset.fileName;
 		win.dataset.prototypeName = trg1.innerHTML;
 		win.dataset.funcName = '';
+
+		// уберём выделение пункта в списке методов/свойств
+		document.getElementById(win_id+"_class_methods").parentNode.selectedIndex = -1;
 	}
 	
 	// #jsdbg_ide_class_browser_NNN_class/object_methods
@@ -1525,12 +1384,14 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		var code_editor = code_editor('#'+win_id+' .c-code_editor-textarea');
 		code_editor.setValue(func.toString(), -1);
 		if(code_editor.session) code_editor.session.foldAll();
+		// TODO удалить/отобразить breakpoints
 		
 		// сохраним выбранный файл/прототип/метод
 		var win = document.querySelector('#'+win_id);
 		win.dataset.funcName = func_name.replace('.prototype', '');
 		win.dataset.prototypeName = prototype_name;
 		win.dataset.fileName = trg1.dataset.fileName;
+		win.func = func; // для breakpoints
 		
 		// отметим тип методов (static/prototype)
 		jsdbg_ide_onclick({type: 'click', target: trg1p});
@@ -1552,6 +1413,139 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			trg1.previousElementSibling.label = trg1.previousElementSibling.label.replace('*', '');
 		}
 	}
+
+	// #jsdbg_class_browser_superclass
+	if(trg1.nodeName == 'OPTION' && trg1.id.match(/jsdbg_class_browser_[0-9]+_superclass/)) {
+		var win_id = trg1.id.replace(/_superclass/, "");
+		var code_editor = code_editor('#'+win_id+' .c-code_editor-textarea');
+		var prototype_name = document.getElementById(win_id).dataset.prototypeName;
+		var win = document.querySelector('#'+win_id);
+		code_editor.setValue(window[prototype_name].prototype.__proto__.constructor.toString().match(/^function ([_a-zA-Z0-9]+)/)[1]);
+		// TODO удалить/отобразить breakpoints
+
+		// отметим, что выбрано наследование
+		win.dataset.funcName = 'superclass';
+	}
+
+	// cmd_code_editor_save
+	// TODO save constructor()
+	// TODO target not my
+	if(ev.type == "click"
+	&& (trg1.className.indexOf('cmd_code_editor_save') > -1 || trg1p.className.indexOf('cmd_code_editor_save') > -1)
+	&& (find_near("c-toolbar", {dataset:{}}).dataset.winId||'').match(/class_browser/)
+	) {
+ 		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var win = document.getElementById(win_id);
+		var editor = code_editor("#"+win_id+" .c-code_editor-textarea");
+		var new_code = editor.getValue();
+		var function_header = new_code.match(/^function ([_0-9a-zA-Z]+) *\(/);
+		var file_name = win.dataset.fileName || '';
+// 		file_name = file_name == "(new...)" ? "(no file)" : file_name;
+		var prototype_name = win.dataset.prototypeName;
+		var func_name = win.dataset.funcName;
+
+		// superclass
+		if(func_name == 'superclass') {
+			var clazz = window[prototype_name];
+			var superclass = new_code || 'Object';
+			if(clazz)
+			{
+				if(!window[superclass]) return alert(superclass+' not found!');
+
+				clazz.prototype.__proto__ = window[superclass].prototype;
+				clazz.__proto__ = Object.create(
+					window[superclass],
+					{constructor: {value: clazz, writable: true, configurable: true}}
+				);
+
+				// сохранить в файл
+				jsdbg_ide_onclick({
+					type: "save_file",
+					file_name: file_name,
+					target: trg1
+				});
+
+				// дальше ничего не обрабатываем
+				return;
+			}
+		}
+
+		// безымянная функция метода
+		if(!function_header && func_name) function_header = ['', func_name.replace(/prototype./, '')];
+
+		if (prototype_name == '' && func_name)
+			return alert('Error! prototype_name = "" and func_name = '+func_name);
+
+		// попытались создать быземянный метод
+		if (prototype_name && !function_header && new_code.match(/^function *\(/)) {
+			return alert("Error! Method without name detected!");
+		}
+
+		// не выбран никакой метод/класс -> просто сохраняем всё
+		if (!function_header || !function_header[1]) {
+			/* skip */
+		}
+
+		// конструктор или новый прототип?
+		else if (prototype_name == function_header[1]
+		|| prototype_name == ''
+		) {
+			prototype_name = function_header[1];
+
+			var old_class = window[function_header[1]];
+
+			// новый прототип?
+			if(!old_class) {
+				old_class = {};
+				// new_code = 'function(' + new_code.substring(function_header[0].length);
+				var old_class_prototype = {};
+			}
+			else {
+				// сохранять все старые методы прототипа
+				var old_class_prototype = window[function_header[1]].prototype;
+			}
+
+			// обновляем конструктор
+			eval('window.'+function_header[1]+' = '+new_code);
+
+			// восстанавливаем сохранённые методы
+			for(var f in old_class)
+			if(f != 'prototype' && f in window[prototype_name].__proto__ == false)
+				window[prototype_name][f] = old_class[f];
+// 			for(var f in old_class_prototype)
+// 				window[prototype_name].prototype[f] = old_class_prototype[f];
+			window[prototype_name].prototype = old_class_prototype;
+		}
+
+		// метод прототипа
+		else {
+			// static/prototype
+			var method_type =  document.getElementById(win_id+"_class_methods").className.match(/selected/) ? '.' : '.prototype.';
+
+			func_name = function_header[1];
+			try {
+			eval(prototype_name+method_type+func_name+' = '+new_code+';');
+			} catch(ex) {
+				console.error(ex);
+				alert(ex);
+			}
+		}
+
+		// сохранить в файл
+		jsdbg_ide_onclick({
+			type: "save_file",
+			file_name: file_name,
+// 			file_content: new_code,
+			target: trg1});
+
+		// обновим список методов
+		/*jsdbg_ide_onclick({
+			type: 'click',
+			target: document.querySelector('#'+win_id + "_class_hierarchy option[data-prototype-name='" + prototype_name  +"']")
+		});*/
+
+		return;
+	}
 }
 
 function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
@@ -1563,15 +1557,18 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		// подключим оформление
 		jsdbg_ide_onclick({type: 'init_css'});
 		
-		// поищем кнопку, и если есть откроем окно дебагера
+		// поищем кнопку и, если есть, откроем окно дебагера
 		for (var ii = 0; ii < panel.childNodes.length; ii++) {
 			var button = panel.childNodes[ii];
-			if (button.debugger1 == (ev.debugger||ev.ctx)) {
+			if (button.ctx == ev.ctx) {
 				var id = button.innerHTML.replace(/.+?#/, '');
 				if (! document.getElementById("jsdbg_debugger_"+id))
 					button.click();
 				else
-					jsdbg_ide_onclick({type: "refresh_dbg_debugger", dbg_id: "jsdbg_debugger_"+id});
+					jsdbg_ide_onclick({
+						type: "refresh_debugger",
+						dbg_id: "jsdbg_debugger_"+id
+					});
 				return
 			}
 		}
@@ -1580,36 +1577,31 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var button = document.createElement('BUTTON');
 		button.className = "cmd_code_editor_debugger";
 		button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
-		button.debugger1 = ev.debugger || ev.ctx;
+		button.ctx = ev.ctx;
 
 		if(document.getElementById("jsdbg_ide_panel")) {
 			panel.insertBefore(button, panel.firstElementChild);
 		}
-		// старый код с главным окном IDE
-		/*else {
-			button.className = "c-panel-btn cmd_code_editor_debugger";
-			document.querySelector("#ide_main_window .c-toolbar").appendChild(button);
-		}*/
 		
 		// и нажмём на неё, чтоб дебагер открылся
 		button.click();
 	}
 	
-	// [refresh_dbg_debugger]
-	if(ev.type == "refresh_dbg_debugger") {
+	// [refresh_debugger]
+	if(ev.type == "refresh_debugger") {
 		var dbg_id = ev.dbg_id || trg1.id;
 		var selected_ctx_num = ev.selected_ctx_num;
-		
-		var debugger1 = jsdbg; //document.getElementById(dbg_id).debugger;
-		var ex = document.getElementById(dbg_id).ex;
+		var dbg_win = document.getElementById(dbg_id);
+		var ctx = dbg_win.ctx;
+		var ex = dbg_win.ex;
 		
 		// очистим стек вызовов
 		var call_stack_select = document.getElementById(dbg_id+'_callstack').firstElementChild;
 		call_stack_select.innerHTML = '';
 		
-		// загрузим стек вызовов
-		var selected_ctx = debugger1.ctx
-		for(var curr_ctx = debugger1.ctx; curr_ctx; curr_ctx = curr_ctx.__down) {
+		// загрузим свежий стек вызовов
+		var selected_ctx = ctx;
+		for(var curr_ctx = ctx; curr_ctx; curr_ctx = curr_ctx.__up) {
 			
 			// создадим option и заполним её параметрами
 			var option = document.createElement('OPTION');
@@ -1623,7 +1615,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			option.innerHTML = option_caption.length > 100 
 				? option_caption.substring(0, 100) + '...' 
 				: option_caption;
-				
+
 			// возмём выделенный контекст если попросили
 			if (selected_ctx_num === call_stack_select.options.length-1) { 
 				selected_ctx = curr_ctx;
@@ -1631,6 +1623,10 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			}
 		}
 		
+		dbg_win.func = selected_ctx.this[selected_ctx.__func]; // для breakpoints
+		// dbg_win.this = selected_ctx.this;
+		dbg_win.curr_ctx = selected_ctx; // для restart
+
 		// загрузим контекст/scope в watch
 		jsdbg_ide_onclick({
 			type: 'load', 
@@ -1640,19 +1636,20 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			clear_before_load: true
 		});
 		
-		var editor = code_editor('#'+dbg_id+'_code_editor');
+		var editor = code_editor("#"+dbg_id+" .c-code_editor-textarea");
 		
 		// исходный код
 		editor.setValue(jsdbg.source[selected_ctx.__func_id]);
-		editor.dataset.funcName = selected_ctx.__func;
-		document.getElementById(dbg_id).className = document.getElementById(dbg_id).className.replace(/ *dbg_readonly_code/, ""); // отчистим атрибут только для чтения
+		// editor.dataset.funcName = selected_ctx.__func;
+		dbg_win.className = dbg_win.className.replace(/ *dbg_readonly_code/, ""); // отчистим атрибут только для чтения
+		// TODO удалить/отобразить breakpoints
 
 		// выделим нужный фрагмент
 		var start = Math.floor(selected_ctx.__ip / 10000);
 		var end = selected_ctx.__ip % 10000;
 		editor.setSelectionRange(start, end);
-		editor.blur();
-		editor.focus();
+		if(editor.blur) editor.blur();
+		if(editor.focus) editor.focus();
 		editor.setSelectionRange(start, end);
 	}
 
@@ -1663,7 +1660,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var id = (button.innerHTML.match(/#([0-9]+)/) || [0, 1])[1];
 		
 		var html = [
-		'<div id="jsdbg_debugger_'+id+'" class="win jsdbg-ide-debugger" style="width:640px;height:625px;">',
+		'<div id="jsdbg_debugger_'+id+'" class="win jsdbg-ide-debugger win-is-hidden" style="width:640px;height:625px;">',
 			'<div id="jsdbg_debugger_'+id+'_title" class="win-header">',
 				'Debugger #'+id,
 				'<a class="win-minimize-btn" href="javascript:void(0)" title="Minimize (ESC)">_</a><a class="win-close-btn" href="javascript:void(0)" title="Close">x</a>',
@@ -1690,7 +1687,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			'</div>',
 			'<div id="jsdbg_debugger_'+id+'_code" class="win-area c-code_editor" style="flex:50;-webkit-box-flex:50;position:relative;">'+
 				'<pre id="jsdbg_debugger_'+id+'_brkpnts" class="c-code_editor-bg" style="height:100%;width:100%;display:block;background:white;position:absolute;top:0;left:0;z-index:-1;color:transparent;"></pre>'+
-				'<textarea id="jsdbg_debugger_'+id+'_code_editor" class="c-code_editor-textarea" style="width:100%;height:100%;background:transparent;position:absolute;top:0;left:0;top:0;bottom:0;right:0;"></textarea>',
+				'<textarea id="jsdbg_debugger_'+id+'_code" class="c-code_editor-textarea" style="width:100%;height:100%;background:transparent;position:absolute;top:0;left:0;top:0;bottom:0;right:0;"></textarea>',
 			'</div>',
 			'<div id="jsdbg_debugger_'+id+'_splitter" class="win-splitter type_horizontal"></div>',
 			'<div id="jsdbg_debugger_'+id+'_watch" class="win-area" style="flex:10;-webkit-box-flex:10.0;position:relative;">'+
@@ -1700,15 +1697,34 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		'</div>'
 		];
 		document.body.insertAdjacentHTML('beforeend', html.join(''));
-		var win = document.getElementById('jsdbg_debugger_'+id);
+		var dbg_win = document.getElementById('jsdbg_debugger_'+id);
+
+		// покажем окно
+		if(dbg_win.className.indexOf('win-is-hidden')) {
+			win_onmouse({
+				type: 'winshow',
+				target: dbg_win
+			});
+		}
+
+		// при закрытии окна удаляем кнопку
+		button.dataset.winId = 'jsdbg_debugger_'+id;
+		dbg_win.addEventListener('close', function(event){
+			// удалим кнопки показа окна
+			var btns = document.querySelectorAll(".cmd_code_editor_debugger[data-win-id='"+event.target.id+"']");
+			for(var i=0; i<btns.length; i++)
+				btns[i].parentNode.removeChild(btns[i]);
+
+		});
 		
 		// привяжем объект для управления дебагом
-		document.getElementById(win.id).debugger = button.debugger;
-		document.getElementById(win.id).ex = button.ex;
-		
+		dbg_win.ctx = button.ctx;
+		dbg_win.ex = button.ex;
+
+		// обновим состояние в окне дебагера
 		jsdbg_ide_onclick({
-			type: "refresh_dbg_debugger",
-			target: document.getElementById("jsdbg_debugger_"+id)});
+			type: "refresh_debugger",
+			target: dbg_win});
 	}
 	
 	// cmd_code_editor_start_debug
@@ -1803,67 +1819,52 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			debugger1.ctx.range(2));
 		
 		jsdbg_ide_onclick({
-			type: "refresh_dbg_debugger",
+			type: "refresh_debugger",
 			target: document.getElementById(win_id)});
 	}
 	
 	// cmd_code_editor_restart
 	// TODO не перезапускает предыдущей метод по контексту?
 	if(trg1.className.indexOf('cmd_code_editor_restart') > -1 || trg1p.className.indexOf('cmd_code_editor_restart') > -1) {
-		var win_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
-		var editor = code_editor('#'+win_id+" .c-code_editor-textarea");
-		var file_name = editor.dataset.fileName;
-		var debugger1 = document.getElementById(win_id).debugger1;
+		var dbg_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var dbg_win = document.getElementById(dbg_id);
+		var curr_ctx = dbg_win.curr_ctx || dbg_win.ctx;
+		var editor = code_editor('#'+dbg_id+" .c-code_editor-textarea");
 		
-		// если мы в функции, то перезапустим функцию
-		for (var func_ctx = debugger1.ctx; func_ctx; func_ctx = func_ctx.parent) {
-			if (func_ctx.type & 16) {
-				
-				var ctx = func_ctx.parent; // вызывающий список
-				
-				// сконструируем заново scope
-				var new_scope = {arguments: ctx.result.slice(1), thiz: ctx.this_for_elem1};
-				var arg_names = ctx.result[0].__littlelisp.args_names;
-				for(var i = 0; i < arg_names.length-1; i++)
-					new_scope[ctx.result[0].__littlelisp.source.substring(arg_names[i] >> 16, 
-						(arg_names[i] >> 16) + (arg_names[i] & 65535))] 
-						= ctx.result[i+1];
-				
-				// создадим стартовый контекст функции
-				debugger1.ctx = new littleLisp.Context(new_scope, ctx, ctx.result[0].__littlelisp.body, 0, ctx.result[0].__littlelisp.source, ctx.result[0].__littlelisp.file, func_ctx.type);
-				
-				jsdbg_ide_onclick({
-					type: "refresh_dbg_debugger",
-					target: document.getElementById(win_id)});
-				
-				return;
-			}
-			if (func_ctx.type & 32 /* type=nested_debugging */) break;
-		}
-		
-		// пересоздаём контекст заново на основе текущего текста/исходника
-		// TODO restart only function context
-		debugger1.ctx = new littleLisp.Context(window, debugger1.ctx.parent, littleLisp.parse(editor.value), undefined, editor.value, file_name, debugger1.ctx.type);
+		// перезапускаем контекст фунцкиции/метода в начало
+		curr_ctx.__restart();
 		
 		jsdbg_ide_onclick({
-			type: "refresh_dbg_debugger",
-			target: document.getElementById(win_id)});
+			type: "refresh_debugger",
+			target: document.getElementById(dbg_id)});
 	}
 	
 	// cmd_code_editor_step_in/over/out
 	if(trg1.className.indexOf('cmd_code_editor_step_in') > -1 || trg1p.className.indexOf('cmd_code_editor_step_in') > -1 || trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1 || trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1) {
-		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var dbgwin_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var dbgwin = document.getElementById(dbgwin_id);
 		
-		var debugger1 = jsdbg;
-		
+		// поднимемся наверх по цепочки контекстов
+		for(var start_ctx = dbgwin.ctx; start_ctx.__up;)
+			start_ctx = start_ctx.__up;
+
 		// сделаем шаг
 		try {
-		if(trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1)
-			debugger1.stepOver();
-		else if(trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1)
-			debugger1.stepOut();
-		else 
-			debugger1.stepIn();
+			if(trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1) {
+				jsdbg.ctx = start_ctx;
+				jsdbg.stepOver();
+				dbgwin.ctx = jsdbg.ctx;
+			}
+			else if(trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1) {
+				jsdbg.ctx = start_ctx;
+				jsdbg.stepOut();
+				dbgwin.ctx = jsdbg.ctx;
+			}
+			else {
+				jsdbg.ctx = start_ctx;
+				jsdbg.stepIn();
+				dbgwin.ctx = jsdbg.ctx;
+			}
 		} catch(ex) {
 			console.error(ex.stack || ex);
 			alert(ex.stack || ex);
@@ -1876,8 +1877,8 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			debugger1.ctx.__ip % 10000); */
 		
 		jsdbg_ide_onclick({
-			type: "refresh_dbg_debugger",
-			target: document.getElementById(win_id)});
+			type: "refresh_debugger",
+			target: dbgwin});
 	}
 
 	// cmd_code_editor_run
@@ -1935,9 +1936,130 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 	// #jsdbg_debugger_NNN_callstack > select
 	if(ev.type == 'click' && trg1.nodeName == 'SELECT' && (trg1p.id||'').indexOf('_callstack') > -1) {
 		jsdbg_ide_onclick({
-			type: "refresh_dbg_debugger",
-			target: document.getElementById(trg1.getAttribute("data-win-id")),
+			type: "refresh_debugger",
+			target: document.getElementById(trg1p.id.replace('_callstack','')),
 			selected_ctx_num: trg1.selectedIndex});
+	}
+
+	// cmd_code_editor_save
+	if(ev.type == "click"
+	&& (trg1.className.indexOf('cmd_code_editor_save') > -1 || trg1p.className.indexOf('cmd_code_editor_save') > -1)
+	&& (find_near("c-toolbar", {dataset:{}}).dataset.winId||'').match(/debugger_/)
+	) {
+ 		var dbg_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var dbg_win = document.getElementById(dbg_id);
+		var editor = code_editor("#"+dbg_id+" .c-code_editor-textarea");
+		var new_code = editor.getValue();
+		// var function_header = new_code.match(/^function ([_0-9a-zA-Z]+) *\(/);
+		// var file_name = win.dataset.fileName || '';
+		// var prototype_name = win.dataset.prototypeName;
+		// var func_name = win.dataset.funcName;
+
+		var ctx = dbg_win.ctx;
+		// TODO выбрать выбранную из цепочки
+
+		var func_id = ctx.__func_id;
+		var func = jsdbg.funcs[func_id];
+
+		// применяем изменения
+		var new_func = false;
+		try {
+
+		if(func[1]) {
+			// static method
+			for (var meth_name in func[1])
+			if (func[1][meth_name] == func[0]) {
+				new_func = func[1][meth_name] = eval('('+new_code+')');
+				break;
+			}
+			// object method
+			if(!new_func)
+			for (var meth_name in func[1].prototype)
+			if (func[1].prototype[meth_name] == func) {
+				new_func = func[1].prototype[meth_name] = eval('('+new_code+')');
+				break;
+			}
+
+			// если пименили изменения, то найдём и сохраним в файл
+			if(new_func) {
+				var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
+				for(var protoname in prototype_to_file_map)
+				if(window[protoname] == func[1])
+				{
+					// сохранить в файл
+					jsdbg_ide_onclick({
+						type: "save_file",
+						file_name: prototype_to_file_map[protoname],
+						target: trg1
+					});
+				}
+
+
+				// перекомпилируем в jsdbg
+				jsdbg.compileFunc(new_func, func[1]);
+
+				// обновим контекст
+				ctx.__func = new_func;
+				ctx.__func_id = new_func.__jsdbg_id;
+
+				// TODO Если контекст в цепочки контектов, то надо обрезать
+
+				// рестартуем в дебаггере контекст
+				jsdbg_ide_onclick({
+					type: 'click',
+					target: dbg_win.querySelector('.cmd_code_editor_restart')
+				});
+			}
+		}
+		else {
+			// function/constructor
+			for(var func_name in window)
+			if(window[func_name] == func[0])
+			{
+				// надо сохранить страрые методы если класс
+				var old_class = window[func_name];
+				var old_class_prototype = old_class.prototype;
+
+				// применим новый конструктор
+				new_func = eval('window.'+func_name+' = '+new_code.replace(/function[^(]+/, 'function'));
+
+				// восстанавливаем сохранённые методы
+				for(var f in old_class)
+				if(f != 'prototype' && f in new_func.__proto__ == false)
+					new_func[f] = old_class[f];
+				new_func.prototype = old_class_prototype;
+
+				// сохраним в файл изменения
+				var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
+				for(var protoname in prototype_to_file_map)
+				if(window[protoname] == func[0])
+				{
+					// сохранить в файл
+					jsdbg_ide_onclick({
+						type: "save_file",
+						file_name: prototype_to_file_map[protoname],
+						target: trg1
+					});
+				}
+
+				// перекомпилируем в jsdbg
+				jsdbg.compileFunc(new_func);
+
+				// TODO рестартуем в дебаггере контекст
+			}
+		}
+		} catch(ex) {
+			console.error(ex);
+			alert(ex);
+		}
+
+		// обновим список методов
+		/*jsdbg_ide_onclick({
+			type: 'click',
+			target: document.querySelector('#'+win_id + "_class_hierarchy option[data-prototype-name='" + prototype_name  +"']")
+		});*/
+
+		return;
 	}
 }
 
@@ -2287,6 +2409,13 @@ function win_onmouse(event) {
 	// .win [mouseup]
 	if(ev.type == 'mouseup' && win_onmouse.win) {
 		var win = win_onmouse.win; 
+
+		// "поднимем" окно среди окон
+		var zindex = 99;
+		var wins = document.querySelectorAll('.win');
+		for(var i=0; i<wins.length; i++)
+			zindex = Math.max(parseInt(wins[i].style.zIndex || '1'), zindex);
+		win.style.zIndex = zindex+1;
 		
 		// сохраним параметры окна, если указано где
 		if(win.dataset.winSettingsLocalStorage) {
@@ -2697,7 +2826,7 @@ jsdbg_ide_onclick.css_styles =
 "#ide_main_window > .ace_editor { border-top:26px solid transparent; display:block; }\n"+
 ".jsdbg-ide-class-browser .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
 ".jsdbg-ide-debugger .ace_editor { border: 1px solid silver; box-sizing: border-box; }"+
-".jsdbg-ide-class-browser .win-header { padding: 10px !important; }\n"
+".jsdbg-ide-class-browser .win-header { padding: 10px !important; }\n"+
 
 ".jsdbg-ide-class-browser optgroup.selected { }\n"+
 ".jsdbg-ide-ace-breakpoint { background: red; position: absolute; }\n"+
