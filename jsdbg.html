@@ -97,11 +97,11 @@ function Test1() {
 <br>
 <button onclick="parse()">parse</button>
 <button onclick="document.querySelector('#result').innerHTML=jsdbg.compile(document.getElementById('example').value)">compile</button>
-<button onclick="alert(jsdbg_tests[jsdbg?'__jsdbg_call':'call'](this));">debug</button>
-<button onclick="compile();Test1(1, 2);">Test1()</button>
-<button onclick="compile();xhr(123, '/');">xhr()</button>
+<button onclick="jsdbg.debug(document.getElementById('example').value);">debug</button>
+<!-- <button onclick="compile();Test1(1, 2);">Test1()</button> -->
+<!-- <button onclick="compile();xhr(123, '/');">xhr()</button> -->
 <button onclick="jsdbg_tests();">jsdbg-tests.js</button>
-<div id="test_zone"></div>
+<div id="test_zone" title="ctrl+click - open debugger"></div>
 <pre id="result" style="white-space:pre-wrap"></pre>
 
 <div class="win jsdbg-debugger" style="width: 640px; height: 625px;display:none" data-win-settings-local-storage="test-win">

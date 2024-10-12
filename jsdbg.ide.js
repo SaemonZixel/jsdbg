@@ -193,8 +193,9 @@ return;
 	// cmd_code_editor_inspect_it
 	if(trg1.className.indexOf('cmd_code_editor_inspect_it') > -1 || trg1p.className.indexOf('cmd_code_editor_inspect_it') > -1) {
 	
-		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
-		var editor = code_editor("#"+win_id+" .c-code_editor-textarea");
+		var dbgwin_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var dbgwin = document.getElementById(dbgwin_id);
+		var editor = code_editor("#"+dbgwin_id+" .c-code_editor-textarea");
 // 		var file_name = editor.getAttribute("data-file-name") || document.getElementById('jsdbg_file_list_selector').value;
 // 		file_name = file_name == "(new...)" ? "(no file)" : file_name;
 		
@@ -202,31 +203,39 @@ return;
 		if (src == "") src = editor.getValue();
 		
 		try {
-				
-			// если в дебагере, то на основе текущего контекста создаём новый дебагер
-			if(win_id.match(/^jsdbg_debugger_/))
-				var debugger1 = jsdbg.debug(src, file_name, document.getElementById(win_id).debugger1.ctx);
-			
-			// иначе в глобальной области видимости
-			else 
-				var debugger1 = jsdbg.debug(src, file_name);
-			
+			// запустим отладку
+			jsdbg.debug(src);
+
+			// если в дебагере, то копируем переменные контекста
+			if(dbgwin_id.match(/^jsdbg_debugger_/))
+			{
+				var curr_ctx = dbgwin.curr_ctx || dbgwin.ctx;
+
+				// копируем локальные переменные
+				for(var f in curr_ctx)
+				if (f[0] == '_' && f[1] == '_') continue;
+				else jsdbg.ctx[f] = curr_ctx[f];
+
+				// ctx.__action = 'inspectit';
+			}
 		} catch(ex) {
 			alert(ex+'\n'+ex.stack)
 			return;
 		}
-			
+
+		// выполняем
 		try {
-			debugger1.continue();
-			var result = debugger1.ctx.__t[0];
+			jsdbg.continue();
+			var result = jsdbg.ctx.__t[0];
 			
 			// удалим дебагер из списка дебагеров
 // 			for (var i in jsdbg.debuggers)
 // 				if (jsdbg.debuggers[i] == debugger1)
 // 					delete jsdbg.debuggers[i];
-			
+
+		// если что-то пошло не так, то покажем дебагер
 		} catch(ex) {
-			if(ex != "Breakpoint!") {
+			if(ex != "breakpoint!") {
 				alert(ex);
 				console.info(ex.stack);
 			}
@@ -234,7 +243,7 @@ return;
 			var button = document.createElement('BUTTON');
 			button.className = "cmd_code_editor_debugger";
 			button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
-			button.debugger1 = debugger1;
+			button.ctx = jsdbg.ctx;
 			button.ex = ex;
 		
 			if(document.getElementById("jsdbg_ide_panel")) {
@@ -1843,10 +1852,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 	if(trg1.className.indexOf('cmd_code_editor_step_in') > -1 || trg1p.className.indexOf('cmd_code_editor_step_in') > -1 || trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1 || trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1) {
 		var dbgwin_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
 		var dbgwin = document.getElementById(dbgwin_id);
-		
-		// поднимемся наверх по цепочки контекстов
-		for(var start_ctx = dbgwin.ctx; start_ctx.__up;)
-			start_ctx = start_ctx.__up;
+		var start_ctx = dbgwin.curr_ctx || dbgwin.ctx;
 
 		// сделаем шаг
 		try {

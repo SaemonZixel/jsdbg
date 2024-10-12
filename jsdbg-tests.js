@@ -101,6 +101,12 @@ function test2_if3(arg1) {
 test2_if3.__arguments = [false];
 test2_if3.__expect = 2;
 
+function test2_ternaryif1(arg1, arg2, arg3) {
+	return arg1 ? arg2 : arg3;
+}
+test2_ternaryif1.__arguments = [true, 123, 321];
+test2_ternaryif1.__expect = 123;
+
 function test2_for1(arg1) {
 	var tmp = arg1;
 	for(var i=0; i<3; i++)
@@ -118,6 +124,36 @@ function test2_for2(arg1) {
 }
 test2_for2.__arguments = [0];
 test2_for2.__expect = 0;
+
+function test2_for3(arg1) {
+	var tmp = arg1;
+	var i=0;
+	for(; i<3; i++)
+		return tmp++;
+	return arg1;
+}
+test2_for3.__arguments = [9];
+test2_for3.__expect = 9;
+
+function test2_for4(arg1) {
+	var tmp = arg1;
+	var i=0;
+	for(/* no init */; /* no test */; i++)
+		return tmp+1;
+	return arg1;
+}
+test2_for4.__arguments = [9];
+test2_for4.__expect = 10;
+
+function test2_for5(arg1) {
+	var tmp = arg1;
+	var i=0;
+	for(/* no init */; /* no test */; /* no increment */)
+		return tmp+1;
+	return arg1;
+}
+test2_for5.__arguments = [9];
+test2_for5.__expect = 10;
 
 function test2_while1(arg1) {
 	var tmp = arg1;
@@ -290,7 +326,7 @@ function test9c2(arg1) {
 	return (new Date(arg1)).toString();
 }
 test9c2.__arguments = [2000];
-test9c2.__expect = "Thu Jan 01 1970 04:00:02 GMT+0400 (MSK)";
+test9c2.__expect = "Thu Jan 01 1970 03:00:02 GMT+0400 (MSK)";
 
 /* ========================= */
 function jsdbg_test_all() {
@@ -310,8 +346,12 @@ function jsdbg_test_all() {
 	jsdbg_test('test2_if1');
 	jsdbg_test('test2_if2');
 	jsdbg_test('test2_if3');
+	jsdbg_test('test2_ternaryif1');
 	jsdbg_test('test2_for1');
 	jsdbg_test('test2_for2');
+	jsdbg_test('test2_for3');
+	jsdbg_test('test2_for4');
+	jsdbg_test('test2_for5');
 	jsdbg_test('test2_while1');
 	jsdbg_test('test2_while2');
 	jsdbg_test('test2_while3');
