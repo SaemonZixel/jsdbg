@@ -74,6 +74,18 @@ function test1f(arg1) {
 test1f.__arguments = [{a: 1, b: 12, c: 10, d: 12, e: 15, f: 4, g: 12, h: 5}];
 test1f.__expect = {a: 2, b: 11, c: 20, d: 4, e: 4, f: 12, g: 9, h: 2};
 
+function test1g() {
+	return (1+2)*(3+4);
+}
+test1g.__arguments = [];
+test1g.__expect = 21;
+
+function test1h(arg1) {
+	return !arg1;
+}
+test1h.__arguments = [0];
+test1h.__expect = true;
+
 function test2_if1(arg1) {
 	if (arg1)
 		return 1;
@@ -100,6 +112,53 @@ function test2_if3(arg1) {
 }
 test2_if3.__arguments = [false];
 test2_if3.__expect = 2;
+
+function test2_if4(arg1, arg2) {
+	if ((tmp = arg1.exec(arg2)) !== null)
+		return tmp;
+	return 2;
+}
+test2_if4.__arguments = [/3/g, '[123]'];
+test2_if4.__expect = ["3"];
+
+function test2_if5(arg1) {
+	if (arg1 == 1)
+		return 111;
+	else if (arg1 == 2 && arg1 > 1)
+		return 222;
+	else
+		return 333;
+	return 0;
+}
+test2_if5.__arguments = [2];
+test2_if5.__expect = 222;
+
+function test2_if6(arg1) {
+	var tmp1 = false;
+	if (arg1 == 1)
+		return 11;
+	else if (arg1 == 3 && !tmp1)
+		return 22;
+	else
+		return 33;
+	return 0;
+}
+test2_if6.__arguments = [3];
+test2_if6.__expect = 22;
+
+function test2_if7_for(arg1) {
+	for (var i = 3; i; i--)
+	if (i == arg1 && i)
+		break;
+	else /* abc */ if (arg1 == i && !arg1)
+		break;
+	else {
+		/* skip */;
+	}
+	return 0;
+}
+test2_if7_for.__arguments = [1];
+test2_if7_for.__expect = 0;
 
 function test2_ternaryif1(arg1, arg2, arg3) {
 	return arg1 ? arg2 : arg3;
@@ -269,6 +328,13 @@ function test3f(arg1, arg2) {
 test3f.__arguments = [{a:1, b:2, c:3}, 'b'];
 test3f.__expect = 2;
 
+function test3g(arg1, arg2) {
+	arg1[arg2+2] = 123;
+	return arg1;
+}
+test3g.__arguments = [{a:1, b:2, c:3}, 'b'];
+test3g.__expect = {a:1, b:2, c:3, b2: 123};
+
 function test4_try1(arg1) {
 	try {
 		throw '123';
@@ -295,14 +361,33 @@ function test4_forin2(arg1) {
 test4_forin2.__arguments = [{aaa: 1, bbb: 2, ccc: 3}];
 test4_forin2.__expect = 2;
 
-function test9a(arg1) {
+function test9_func1(arg1) {
 	var func = function(){
 		return arg1;
 	};
 	return func();
 }
-test9a.__arguments = [123];
-test9a.__expect = 123;
+test9_func1.__arguments = [123];
+test9_func1.__expect = 123;
+
+function test9_func2(arg1) {
+	function func(){
+		return arg1;
+	};
+	return func();
+}
+test9_func2.__arguments = [1234];
+test9_func2.__expect = 1234;
+
+function test9_func3(arg1) {
+	var tmp = 999;
+	function func(){
+		return tmp;
+	};
+	return func();
+}
+test9_func3.__arguments = [12345];
+test9_func3.__expect = 999;
 
 function test9b(arg1) {
 	return JSON.stringify(arg1);
@@ -326,7 +411,7 @@ function test9c2(arg1) {
 	return (new Date(arg1)).toString();
 }
 test9c2.__arguments = [2000];
-test9c2.__expect = "Thu Jan 01 1970 03:00:02 GMT+0400 (MSK)";
+test9c2.__expect = "Thu Jan 01 1970 03:00:02 GMT+0300 (MSK)";
 
 /* ========================= */
 function jsdbg_test_all() {
@@ -342,10 +427,16 @@ function jsdbg_test_all() {
 	jsdbg_test('test1d');
 	jsdbg_test('test1e');
 	jsdbg_test('test1f');
+	jsdbg_test('test1g');
+	jsdbg_test('test1h');
 	
 	jsdbg_test('test2_if1');
 	jsdbg_test('test2_if2');
 	jsdbg_test('test2_if3');
+	jsdbg_test('test2_if4');
+	jsdbg_test('test2_if5');
+	jsdbg_test('test2_if6');
+	jsdbg_test('test2_if7_for');
 	jsdbg_test('test2_ternaryif1');
 	jsdbg_test('test2_for1');
 	jsdbg_test('test2_for2');
@@ -366,12 +457,15 @@ function jsdbg_test_all() {
 	jsdbg_test('test3d');
 	jsdbg_test('test3e');
 	jsdbg_test('test3f');
+	jsdbg_test('test3g');
 	
 	jsdbg_test('test4_try1');
 	jsdbg_test('test4_forin1');
 	jsdbg_test('test4_forin2');
 	
-	jsdbg_test('test9a');
+	jsdbg_test('test9_func1');
+	jsdbg_test('test9_func2');
+	jsdbg_test('test9_func3');
 	jsdbg_test('test9b');
 	jsdbg_test('test9b2');
 	jsdbg_test('test9c');
@@ -383,7 +477,8 @@ function jsdbg_test(func_name, verbose, event)
 	if (!window[func_name]) return alert('Not found - '+func_name+'!');
 	
 	// компилируем
-	if (!window[func_name].__jsdbg_id) try {
+	delete window[func_name].__jsdbg_id;
+	/*if (!window[func_name].__jsdbg_id)*/ try {
 		var func_compiled = jsdbg.compileFunc(window[func_name]);
 	}
 	catch(ex) {
@@ -425,22 +520,23 @@ function jsdbg_test(func_name, verbose, event)
 		// попросили запустить под дебагером
 		//console.log(event);
 		if ((event||{}).ctrlKey) {
-			return jsdbg.debug(window[func_name], window, args);
+			jsdbg.debug(window[func_name], window, args);
+			jsdbg_ide_onclick({type: 'open_debugger', ctx: jsdbg.ctx});
+			return;
 		}
 		
-		jsdbg.ctx = new Ctx();
-		switch(window[func_name].length) {
+		switch(args.length) {
 			case 0:
-				result = window[func_name].__jsdbg_call0(window); 
+				result = jsdbg(window[func_name], window);
 				break;
-			case 1: 
-				result = window[func_name].__jsdbg_call1(window, args[0]); 
+			case 1:
+				result = jsdbg(window[func_name], window, args[0]);
 				break;
-			case 2: 
-				result = window[func_name].__jsdbg_call2(window, args[0], args[1]); 
+			case 2:
+				result = jsdbg(window[func_name], window, args[0], args[1]);
 				break;
-			case 3: 
-				result = window[func_name].__jsdbg_call3(window, args[0], args[1], args[2]);
+			case 3:
+				result = jsdbg(window[func_name], window, args[0], args[1], args[2]);
 				break;
 		}
 	} catch(ex) {
