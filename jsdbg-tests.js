@@ -86,6 +86,12 @@ function test1h(arg1) {
 test1h.__arguments = [0];
 test1h.__expect = true;
 
+function test1i(arg1) {
+	return typeof arg1;
+}
+test1i.__arguments = [true];
+test1i.__expect = 'boolean';
+
 function test2_if1(arg1) {
 	if (arg1)
 		return 1;
@@ -214,6 +220,16 @@ function test2_for5(arg1) {
 test2_for5.__arguments = [9];
 test2_for5.__expect = 10;
 
+function test2_for6(arg1) {
+	var tmp = arg1;
+	var i=0;
+	for(var i=0; i < arg1.length+3; i++)
+		continue;
+	return i;
+}
+test2_for6.__arguments = ['abc'];
+test2_for6.__expect = 6;
+
 function test2_while1(arg1) {
 	var tmp = arg1;
 	while(tmp)
@@ -243,6 +259,17 @@ function test2_while3(arg1) {
 }
 test2_while3.__arguments = [3];
 test2_while3.__expect = 4;
+
+function test2_while4(arg1) {
+	var tmp = 0;
+	while(tmp < arg1.length+3) {
+		if (tmp == 4) break;
+		tmp++;
+	}
+	return tmp;
+}
+test2_while4.__arguments = ['abc'];
+test2_while4.__expect = 4;
 
 function test2_do_while4(arg1) {
 	var tmp = arg1;
@@ -335,6 +362,13 @@ function test3g(arg1, arg2) {
 test3g.__arguments = [{a:1, b:2, c:3}, 'b'];
 test3g.__expect = {a:1, b:2, c:3, b2: 123};
 
+function test3h(arg1) {
+	var tmp = (arg1.a ||{}).b || [];
+	return tmp;
+}
+test3h.__arguments = [{a: {b: 9}}];
+test3h.__expect = 9;
+
 function test4_try1(arg1) {
 	try {
 		throw '123';
@@ -389,6 +423,16 @@ function test9_func3(arg1) {
 test9_func3.__arguments = [12345];
 test9_func3.__expect = 999;
 
+function test9_func4(arg1) {
+	var tmp = [];
+	arg1.forEach(function(a){
+		tmp.push(a*10);
+	});
+	return tmp;
+}
+test9_func4.__arguments = [[1,2,3,4,5]];
+test9_func4.__expect = [10,20,30,40,50];
+
 function test9b(arg1) {
 	return JSON.stringify(arg1);
 }
@@ -429,6 +473,7 @@ function jsdbg_test_all() {
 	jsdbg_test('test1f');
 	jsdbg_test('test1g');
 	jsdbg_test('test1h');
+	jsdbg_test('test1i');
 	
 	jsdbg_test('test2_if1');
 	jsdbg_test('test2_if2');
@@ -443,9 +488,11 @@ function jsdbg_test_all() {
 	jsdbg_test('test2_for3');
 	jsdbg_test('test2_for4');
 	jsdbg_test('test2_for5');
+	jsdbg_test('test2_for6');
 	jsdbg_test('test2_while1');
 	jsdbg_test('test2_while2');
 	jsdbg_test('test2_while3');
+	jsdbg_test('test2_while4');
 	jsdbg_test('test2_do_while4');
 	jsdbg_test('test2_switch1');
 	jsdbg_test('test2_switch2');
@@ -458,6 +505,7 @@ function jsdbg_test_all() {
 	jsdbg_test('test3e');
 	jsdbg_test('test3f');
 	jsdbg_test('test3g');
+	jsdbg_test('test3h');
 	
 	jsdbg_test('test4_try1');
 	jsdbg_test('test4_forin1');
@@ -466,6 +514,7 @@ function jsdbg_test_all() {
 	jsdbg_test('test9_func1');
 	jsdbg_test('test9_func2');
 	jsdbg_test('test9_func3');
+	jsdbg_test('test9_func4');
 	jsdbg_test('test9b');
 	jsdbg_test('test9b2');
 	jsdbg_test('test9c');
@@ -498,7 +547,7 @@ function jsdbg_test(func_name, verbose, event)
 		if (!script) {
 			script = document.createElement('SCRIPT');
 			script.id = func_name;
-			script.onerror = function(event){ console.error(event); alert('Error! http://localhost:8800/ - not work!'); this.parentNode.removeChild(this); };
+			// script.onerror = function(event){ console.error(event); alert('Error! http://localhost:8800/ - not work!'); this.parentNode.removeChild(this); };
 			script.src = 'http://localhost:8800/?src='+encodeURIComponent('jsdbg.compiled['+window[func_name].__jsdbg_id+']='+jsdbg.compiled[window[func_name].__jsdbg_id].toString()+';');
 			document.head.appendChild(script);
 		}
@@ -520,7 +569,7 @@ function jsdbg_test(func_name, verbose, event)
 		// попросили запустить под дебагером
 		//console.log(event);
 		if ((event||{}).ctrlKey) {
-			jsdbg.debug(window[func_name], window, args);
+			jsdbg.startDebug(window[func_name], window, args);
 			jsdbg_ide_onclick({type: 'open_debugger', ctx: jsdbg.ctx});
 			return;
 		}
