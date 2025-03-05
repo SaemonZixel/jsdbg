@@ -1,4 +1,4 @@
-if(!window['Ctx']) function Ctx(parent_ctx){
+if(!window['Ctx']) var Ctx = function (parent_ctx) {
 	this.__ip = 0;
 	this.__t = [undefined, undefined, undefined, undefined];
 	this.__func = undefined;
@@ -70,10 +70,12 @@ Ctx.prototype.__func_start = function (func_name, func__jsdbg_id, parent_ctx) {
 	return this;
 };
 
-Ctx.prototype.__func_end = function (func_name) {  
+Ctx.prototype.__func_end = function (func_name) { 
 //	console.log("__func_end(): func_name="+func_name+", __func="+(this.__func||''));
 	
-	for(var up_ctx = this;up_ctx.__up; up_ctx = up_ctx.__up)
+	this.__ip = -1;
+	
+	for(var up_ctx = this; up_ctx.__up; up_ctx = up_ctx.__up)
 		if(up_ctx.__func == func_name) {
 			if(up_ctx.__up) up_ctx.__up.__down = undefined; // отцепляем всё ниже
 			return up_ctx.__up;
@@ -84,7 +86,13 @@ Ctx.prototype.__func_end = function (func_name) {
 	
 	// бывает что это самый верхний контекст
 // 	if (up_ctx.__up)
-		console.info("__func_end(): not found ctx.__func="+func_name+' !');
+//		console.info("__func_end(): not found ctx.__func="+func_name+' !');
+	
+	// закончили выполнение callback функции и контекст надо отключить от jsdbg
+	if(this.__is_callback && jsdbg.ctx == this) {
+		jsdbg.old_ctx = jsdbg.ctx;
+		delete jsdbg.ctx;
+	}
 	
 	return up_ctx;
 };
@@ -103,7 +111,7 @@ Ctx.prototype.__try_end = function (try_ip, catch_ip) {
 		console.info("__try_end(): not found ctx.__catch_block["+try_ip+'] !');
 };
 
-Ctx.prototype.__catch = function (exception) {
+Ctx.prototype.__catch = function (exception) { 
 	console.log("__catch(): exception="+exception);
 	this.__exception = exception;
 	
@@ -113,18 +121,40 @@ Ctx.prototype.__catch = function (exception) {
 		var end = try_range % 10000;
 		if (ip >= start && ip <= end) {
 			this.__ip = this.__catch_block[try_range];
-			return true;
+			return true; // поймали эксепшен успешно
 		}
 	}
+	
+	// если дальше кидать некуда, то открываем окно дебаггера если возможно
+	if(this.__up == undefined && typeof jsdbg_ide_onclick != 'undefined') {
+		setTimeout(jsdbg_ide_onclick.bind(window, {type: 'open_debugger', ctx: this}), 20); 
 		
+		// не надо breakpoint кидать дальше
+		if(exception == 'breakpoint!') {
+			// подчищаем
+			jsdbg.old_ctx = jsdbg.ctx;
+			delete jsdbg.ctx;
+		
+			return false;
+		}
+	}
+
 	console.info("__catch(): Not found relevant ctx.__catch_block for "+this.__ip+"!");
+
+	// если на самом верху цепочки контекстов, то подчистим за собой
+	if(this.__up == undefined) {
+		jsdbg.old_ctx = jsdbg.ctx;
+		delete jsdbg.ctx;
+	}
+
+	// кидаем дальше exception
 	return false;
 };
 
-Ctx.prototype.__new = function () 
-{
+Ctx.prototype.__new = function () { 
 	// сразу проверим на native
-	if(arguments[0].__jsdbg_compiled == 2)
+	// TODO [object XMLHttpRequestConstructor]
+	if(arguments[0].__jsdbg_compiled == 2 || typeof(arguments[0]) == 'object')
 	switch(arguments.length) {
 		case 1:
 			return new arguments[0]();
@@ -187,8 +217,7 @@ Ctx.prototype.__new = function ()
 	return new_obj;
 };
 
-Ctx.prototype.__func_call = function (func_, this_) 
-{
+Ctx.prototype.__func_call = function (func_, this_) { 
 		if (func_ == undefined) { 
 			// поищем название функции
 			var src = jsdbg.compiled[this.__func_id].toString();
@@ -242,6 +271,24 @@ Ctx.prototype.__func_call = function (func_, this_)
 				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9]); break;
 			case 11:
 				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10]); break;
+			case 12:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11]); break;
+			case 13:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12]); break;
+			case 14:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13]); break;
+			case 15:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14]); break;
+			case 16:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15]); break;
+			case 17:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16]); break;
+			case 18:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17]); break;
+			case 19:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18]); break;
+			case 20:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19]); break;
 			default:
 				alert('Ctx.prototype.__func_call: Not implemented yet! '+arguments.length);
 				throw new Error('Ctx.prototype.__func_call: Not implemented yet! '+arguments.length);
@@ -257,7 +304,7 @@ Ctx.prototype.__func_call = function (func_, this_)
 		return result;
 };
 
-Ctx.prototype.__restart = function () {
+Ctx.prototype.__restart = function () { 
 	this.__ip = 0;
 	this.__t = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined];
 	this.__exception = undefined;
@@ -304,6 +351,24 @@ Ctx.prototype.__restart = function () {
 		case 10: 
 			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9]); 
 			break;
+		case 11: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10]); 
+			break;
+		case 12: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11]); 
+			break;
+		case 13: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12]); 
+			break;
+		case 14: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12], this.arguments[13]); 
+			break;
+		case 15: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12], this.arguments[13], this.arguments[14]); 
+			break;
+		case 16: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12], this.arguments[13], this.arguments[14], this.arguments[15]); 
+			break;
 		default:
 			debugger;
 	}
@@ -316,32 +381,68 @@ Ctx.prototype.__restart = function () {
 	jsdbg.step_limit = old_step_limit;
 };
 
-if(!window['jsdbg']) var jsdbg = function jsdbg()
-{
+Ctx.prototype.__func_apply = function (func_, this_, arguments_) { 
+	
+		// компилируем функцию если надо
+		if( ! func_.__jsdbg_compiled && ! func_.__jsdbg_id)
+			jsdbg.compileFunc(func_, this_);
+		
+		// создаём новый контекст для вызываемой функции/метода
+		if(!this.hasOwnProperty('__down') || !this.__down) {
+			this.__down = new Ctx();
+			this.__down.__up = this;
+			this.__down.__callee = func_;
+		}
+		jsdbg.ctx = this.__down;
+
+		// уже скомпилированная функция (обычно anonymous)
+		var func = func_.__jsdbg_id ? jsdbg.compiled[func_.__jsdbg_id] : func_;
+		var result = func.apply(this_, arguments_);
+		
+		// удаляем контекст для вызваной функции/метода
+		if (this.__down) {
+			delete this.__down.__up;
+			delete this.__down;
+		}
+		jsdbg.ctx = this;
+		
+		return result;
+};
+
+if(!window['jsdbg']) var jsdbg = function jsdbg() { 
 	var func = arguments[0];
 	var this_ = arguments[1]||window;
 	var args = [];
 	while(arguments.length > args.length+2) args.push(arguments[args.length+2]);
 	
 	try {
+		if(func == undefined) throw new Error('Function is undefined!');
 		jsdbg.startDebug(func, this_, args);
 		jsdbg.continue();
 	}
 	catch(ex) {
-		if(jsdbg_ide_onclick)
-			jsdbg_ide_onclick({type: 'open_debugger', ctx: jsdbg.ctx});
+		//if(typeof jsdbg_ide_onclick != 'undefined')
+		//	setTimeout(jsdbg_ide_onclick.bind(window, {type: 'open_debugger', ctx: jsdbg.ctx || (new Ctx())}), 100);
 			
 		if (ex != 'step_limit=0!' && ex != 'breakpoint!') {
-			setTimeout(function(){ alert(ex); }, 100);
+			if(!window.onerror) setTimeout(function(){ alert(ex); }, 100);
+			
+			// подчистим за собой
+			if(jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
+			delete jsdbg.ctx;
+		
 			throw ex;
 		}
 	}
+
+	// подчистим за собой
+	if(jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
+	delete jsdbg.ctx;
 	
-	return jsdbg.ctx.__t[0];
+	return jsdbg.old_ctx ? jsdbg.old_ctx.__t[0] : undefined;
 };
 
-jsdbg.init = function () 
-{
+jsdbg.init = function () {
 	this.next_id = 1;
 	this.compiled = []; // скомпилированые функции
 	this.source = []; // исходный код скопилированых функций
@@ -350,7 +451,7 @@ jsdbg.init = function ()
 	this.breakpoints = {};
 };
 
-jsdbg.compile = function (src, id, scope){
+jsdbg.compile = function (src, id, scope) {
  	this.src = src;
 	this.code = [];
 	this.tmp = 0; // текущая свободная временная переменная
@@ -383,7 +484,7 @@ jsdbg.compile = function (src, id, scope){
 	return this.code.join('');
 };
 
-jsdbg.compileAcornStmt = function (node) {        
+jsdbg.compileAcornStmt = function (node) { 
 	var code = this.code;
 	var old_tmp = this.tmp;
 	
@@ -408,32 +509,40 @@ jsdbg.compileAcornStmt = function (node) {
 		this.code.push('){');
 	
 		// prepare ctx
-		this.code.push('\n\tvar ctx = (window.jsdbg ? jsdbg.ctx : new Ctx());');
+		this.code.push('\n\tvar ctx = jsdbg.ctx;');
+		this.code.push('\n\tif(!ctx) { jsdbg.ctx = ctx = new Ctx(); jsdbg.step_limit = 55222333; }');
 		this.code.push('\n\tvar t = ctx.__t;');
 		
+		// parent_ctx
+		var old_parent_ctx_name = this.parent_ctx_name;
+		this.parent_ctx_name = 'parent_ctx_'+node.id.name;
+		this.code.push(' var '+this.parent_ctx_name+' = ctx;');
+		
 		// продолжение выполнения или начало вызова?
-		this.code.push('\n\tif(ctx.__ip == 0) {');
-		
-		// зарегистрируем начало функции
-		this.code.push('\n\t\tctx.__func_start("'+node.id.name+'", '+this.func_id+');');
-		
-		// зарегистрируем arguments
-		this.code.push('\n\t\tctx.arguments = arguments;');
-		for(var i=0;i<node.params.length;i++)
-			code.push('\n\t\tctx.'+node.params[i].name+' = arguments['+i+'];');
-		
-		// зарегистрируем this
-		this.code.push('\n\t\tctx.this = this;');
+//		this.code.push('\n\tif(ctx.__ip == 0) {');
 			
-		this.code.push('\n\t}');
+//		this.code.push('\n\t}');
 			
 		// body
-		this.code.push('\n\tfor(var _prt_cnt=9999;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){');
+		this.code.push('\n\tfor(var _prt_cnt=111222;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){');
 		this.code.push('\n\t\tcase 0:');
+		
+		// зарегистрируем начало функции
+		this.code.push('\n\t\t\tctx.__func_start("'+node.id.name+'", '+this.func_id+');');
+		
+		// зарегистрируем arguments
+		this.code.push('\n\t\t\tctx.arguments = arguments;');
+		for(var i=0;i<node.params.length;i++)
+			code.push('\n\t\t\tctx.'+node.params[i].name+' = arguments['+i+'];');
+		
+		// зарегистрируем this
+		this.code.push('\n\t\t\tctx.this = this; ');
+		
+		// компилируем сам код функции
 		this.compileAcornStmt(node.body);
 		
 		// end
-		this.code.push('\n\t\tdefault: ctx.__ip = -1; ctx.__func_end("'+node.id.name+'"); return;');
+		this.code.push('\n\t\tdefault: ctx.__func_end("'+node.id.name+'"); return;');
 		
 		// try{}catch(){}
 		this.code.push('\n\t}} catch(ex) {\n\t\tif(ex == "step_limit=0!") throw ex;\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}');
@@ -446,6 +555,7 @@ jsdbg.compileAcornStmt = function (node) {
 				
 		this.func_name.pop();
 		this.scope.shift();
+		this.parent_ctx_name = old_parent_ctx_name;
 	}
 	
 	else if(node.type == "BlockStatement") {
@@ -555,9 +665,9 @@ jsdbg.compileAcornStmt = function (node) {
 		this.compileAcornExpr(node.test, false);
 		this.code.push(' if(!t['+this.tmp+']) ');
 		if (node.alternate)
-			this.code.push('{ ctx.__next_step('+((node.elseStart||node.alternate.start)*10000+node.alternate.end)+'); break; } else '); // идём на alternate
+			this.code.push('{ ctx.__next_step('+((node.elseStart||node.alternate.start)*10000+node.alternate.end)+'); break; } '); // идём на alternate
 		else
-			this.code.push('{ ctx.__next_step('+(node.end*10000+node.start)+'); break; } else '); // идём на перевёрнутый
+			this.code.push('{ ctx.__next_step('+(node.end*10000+node.start)+'); break; } '); // идём на перевёрнутый
 			
 		// if-true (consequent)
 		this.compileAcornStmt(node.consequent);
@@ -920,7 +1030,7 @@ jsdbg.compileAcornStmt = function (node) {
 		this.compileAcornExpr(node, false);
 };
 
-jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {       
+jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) { 
 		
 	if(node.type == "CallExpression") 
 	{
@@ -938,11 +1048,32 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			args.push(this.compileAcornExpr(node.arguments[i], true));
 			if (args[args.length-1].indexOf('t[') === 0) 
 				this.tmp++;
+			// TODO неэфективное использование временных переменных
+			// пример: a.concat(a.toString()+a.toString(), a, a.toString()+a.toString());
 		}
 		
 		this.tmp = old_tmp;
 		
-		// шаг вызова функции
+		// эмулируем Function.prototype.apply()
+		if(func_frag[0].match(/\.apply$/)) {
+			this.code.push(' ctx.__next_step('+
+				(node.start*10000+node.end)+');\n\t\tcase '+
+				(node.start*10000+node.end)+': t['+this.tmp+'] = ('+
+				func_frag[0]+' instanceof Function) ? ctx.__func_apply('+
+				func_frag[0].replace(/\.apply$/, '') +
+				', ' + args[0] + ', ' + args[1] + ') : ctx.__func_call('+
+				func_frag[0] + ', ' + func_frag[1] + (args.length?', ':'') +
+				args.join(', ') +
+				');');
+		}
+		else if(func_frag[0] == 'jsdbg') {
+			this.code.push(' ctx.__next_step('+
+				(node.start*10000+node.end)+');\n\t\tcase '+
+				(node.start*10000+node.end)+': t['+this.tmp+'] = ctx.__func_call(' +
+				args.join(', ') + ');');
+		}
+		// простой шаг вызова функции
+		else 
 		this.code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+
 			(node.start*10000+node.end)+': t['+this.tmp+'] = '+
@@ -1002,6 +1133,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			var code_line = 'undefined';
 		else if (this.scope[0] && this.scope[0][node.name])
 			var code_line = "ctx."+node.name;
+		else if (node.name == '__t' || node.name == '__ip' || node.name == '__callee' || node.name == '__up' || node.name == '__down' || node.name == '__func_id')
+			var code_line = "ctx."+node.name;
 		else
 			var code_line = node.name;
 		
@@ -1056,14 +1189,15 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		
 		// вычислим правую часть
 		var right = this.compileAcornExpr(node.right, group_exprs.indexOf(node.right.type) < 0);
-		// this.tmp += right.indexOf('t[') == 0 ? 1 : 0;
+		this.tmp += right.indexOf('t[') == 0 ? 1 : 0; // на случай is_subexpression = true
 //console.log(left, node.left.type, right, node.right.type);
-		// восстановим
-		this.tmp = old_tmp;
 		
 		// подвыражение -> возвращаем как фрагмент
 		if (is_subexpression)
 			return left+' '+node.operator+' '+right;
+
+		// восстановим
+		this.tmp = old_tmp;
 		
 		// возвращаем как шаг и временную переменную
 		this.code.push(' ctx.__next_step('+
@@ -1090,7 +1224,7 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			this.code.push(' if('+left+') { t['+old_tmp+'] = '+left+'; ctx.__next_step('+(node.end*10000+node.start)+'); break; }');
 		}
 		else if (node.operator == '&&') {
-			this.code.push(' if(!('+left+')) { ctx.__next_step('+(node.end*10000+node.start)+'); break; }');
+			this.code.push(' if(!('+left+')) { t['+old_tmp+'] = false; ctx.__next_step('+(node.end*10000+node.start)+'); break; }');
 		}
 		
 		// вычислим правую часть
@@ -1140,12 +1274,15 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 				this.tmp++;
 			code_line += (code_line?', ':'') + code_frag;
 		}
+		
+		// подвыражение -> вернём без шага и временной переменной (если без доп.вычислений было)
+		if (is_subexpression && this.tmp == old_tmp) {
+			return '['+code_line+']';
+		}
+		
+		// похоже были доп.вычисления
 		this.tmp = old_tmp;
 		
-		// подвыражение -> вернём без шага и временной переменной
-		if (is_subexpression)
-			return '['+code_line+']';
-			
 		// иначе верёнм как шаг и временную переменную
 		this.code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+
@@ -1158,13 +1295,17 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		var old_tmp = this.tmp, code_line = [];
 		for(var i=0; i<node.properties.length; i++) {
 			var code_frag = this.compileAcornExpr(node.properties[i].value, true);
-			this.tmp += code_frag.indexOf('t[') == 0 ? 1 : 0;
+			if (code_frag.indexOf('t[') == 0)
+				this.tmp++;
 			code_line.push((node.properties[i].key.raw || node.properties[i].key.name) + ': ' + code_frag);
 		}
-		this.tmp = old_tmp;
 		
-		if (is_subexpression)
+		// подвыражение -> вернём без шага и временной переменной (если без доп.вычислений было)
+		if (is_subexpression && this.tmp == old_tmp) 
 			return '{'+code_line.join(', ')+'}';
+			
+		// похоже были доп.вычисления
+		this.tmp = old_tmp;
 		
 		this.code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+
@@ -1236,27 +1377,29 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		// уже именованная функция или анонимная?
 		if (node.id && node.id.name) {
 			var func_name = node.id.name;
+			var tmp_var_func = '__'+func_name+node.start;
 			var tmp_var_to_return = 'ctx.'+func_name;
 			this.scope[0][func_name] = true;
 			
-			// выделем заголовок функции
+			// выделим заголовок функции
 			this.code.push(' ctx.__next_step('+
 				((node.start+node.id.end)*10000+node_end)+');\n\t\tcase '+
 				((node.start+node.id.end)*10000+node_end)+':');
 		}
 		else {
 			var func_name = this.func_name[this.func_name.length-1]+'-func'+node.start;
+			var tmp_var_func = '__'+func_name.replace(/-/g, '_');
 			var tmp_var_to_return = 't['+this.tmp+']';
 			
-			// выделем заголовок функции
+			// выделим заголовок функции
 			this.code.push(' ctx.__next_step('+
 				((node.start+8)*10000+node_end)+');\n\t\tcase '+
 				((node.start+8)*10000+node_end)+':');
 		}
 		
-		this.code.push(' var parent_ctx = ctx; ');
+		//this.code.push(' var parent_ctx = ctx; ');
 		
-		this.code.push(tmp_var_to_return+' = function(');
+		this.code.push('var '+tmp_var_func+' = '+tmp_var_to_return+' = function(');
 		this.func_name.push(func_name);
 		this.scope.unshift({arguments:true}); 
 		this.scope[0].__proto__ = this.scope[1];
@@ -1269,35 +1412,34 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		this.code.push('){');
 		
 		// prepare ctx
-		this.code.push('\n\tvar ctx = (window.jsdbg ? jsdbg.ctx : new Ctx());');
-		this.code.push('\n\tif(ctx.__ip == -1) ctx = new Ctx();');
+		this.code.push('\n\tvar ctx = jsdbg.ctx;');
+		this.code.push('\n\tif(!ctx || ctx.__ip == -1) { jsdbg.ctx = ctx = new Ctx(); ctx.__callee = '+tmp_var_func+'; ctx.__is_callback = true; jsdbg.step_limit = 55222333; }');
 		this.code.push('\n\tvar t = ctx.__t;');
 		
-		// продолжение выполнения или начало вызова?
-		this.code.push('\n\tif(ctx.__ip == 0) {');
+		// parent_ctx
+		var old_parent_ctx_name = this.parent_ctx_name;
+		this.parent_ctx_name = 'parent_ctx_'+func_name.replace(/-/g, '_');
+		this.code.push(' var '+this.parent_ctx_name+' = ctx;');
+		
+		// при многократном вызове, надо сбрасывать указатель операции
+		//this.code.push('\n\tif(ctx.__ip == -1) ctx.__ip = 0;');
+		
+		// body
+		this.code.push('\n\tfor(var _prt_cnt=111222; _prt_cnt; _prt_cnt--) try { switch(ctx.__ip){');
+		this.code.push('\n\t\tcase 0:');
 		
 		// зарегистрируем начало функции
-		this.code.push('\n\t\tctx.__func_start("'+func_name+'", '+this.func_id+', parent_ctx);');
+		this.code.push('\n\t\t\tctx.__func_start("'+func_name+'", '+this.func_id+', '+old_parent_ctx_name+');');
 		
 		// зарегистрируем arguments
-		this.code.push('\n\t\tctx.arguments = arguments;');
+		this.code.push('\n\t\t\tctx.arguments = arguments;');
 		for(var i=0;i<node.params.length;i++)
-			this.code.push('\n\t\tctx.'+node.params[i].name+' = arguments['+i+'];');
-			
-		this.code.push('\n\t}');
+			this.code.push('\n\t\t\tctx.'+node.params[i].name+' = arguments['+i+'];');
 		
-		// arguments
-//		this.code.push('\n\tctx.arguments = arguments;');
-//		for(var i=0;i<node.params.length;i++)
-//			this.code.push('\n\tctx.'+node.params[i].name+' = arguments['+i+'];');
-			
-		// body
-		this.code.push('\n\tfor(var _prt_cnt=99999; _prt_cnt; _prt_cnt--) try { switch(ctx.__ip){');
-		this.code.push('\n\t\tcase 0:');
 		this.compileAcornStmt(node.body);
 		
 		// try{}catch(){}
-		this.code.push('\n\t\tdefault: ctx.__ip = -1; return; }} catch(ex) {');
+		this.code.push('\n\t\tdefault: ctx.__func_end("'+func_name+'"); return; }} catch(ex) {');
 		this.code.push('\n\t\tif(ex == "step_limit=0!") throw ex;');
 		this.code.push('\n\t\telse if(ctx.__catch(ex)) continue;\n\t\telse throw ex;\n\t}');
 		
@@ -1315,6 +1457,7 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		
 		this.func_name.pop();
 		this.scope.shift();
+		this.parent_ctx_name = old_parent_ctx_name;
 		
 		return tmp_var_to_return;
 	}
@@ -1330,11 +1473,11 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		// if
 		this.code.push(' ctx.__next_step('+
 			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': if(!'+tmp_test+') ');
+			(node.start*10000+node.end)+': if(!('+tmp_test+')) ');
 		if (node.alternate)
-			this.code.push('{ ctx.__next_step('+(node.alternate.start*10000+node.alternate.end)+'); break; } else'); // идём на alternate
+			this.code.push('{ ctx.__next_step('+(node.alternate.start*10000+node.alternate.end)+'); break; }'); // идём на alternate
 		else
-			this.code.push('{ ctx.__next_step('+(node.end*10000+node.start)+'); break; } else'); // идём на перевёрнутый
+			this.code.push('{ ctx.__next_step('+(node.end*10000+node.start)+'); break; }'); // идём на перевёрнутый
 
 		// if-true (consequent)
 		this.code.push(' t['+result_tmp+'] = '+ this.compileAcornExpr(node.consequent, true)+';');
@@ -1346,9 +1489,20 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			// пусть идёт на перевёрнутый (перепрыгивает блок ниже)
 			this.code.push(' ctx.__next_step('+(node.end*10000+node.start)+'); break;');
 
-			this.code.push('\n\t\tcase '+(node.alternate.start*10000+node.alternate.end)+':');
+			// надо будет проверить сгенерировался case для node.alternate?
+			var ternary_if_false_body_start = this.code.length;
+			var ternary_if_false_body_result = this.compileAcornExpr(node.alternate, true);
+			var case_alternate_fragment = 'case '+(node.alternate.start*10000+node.alternate.end)+':';
+			for(var i=ternary_if_false_body_start; i<this.code.length;i++)
+				if(this.code[i].indexOf(case_alternate_fragment)>-1) {
+					case_alternate_fragment = null; // уже вставлен
+					break;
+				}
+			// нужно вставить
+			if(case_alternate_fragment != null)
+				this.code.push('\n\t\t'+case_alternate_fragment);
 
-			this.code.push(' t['+result_tmp+'] = '+this.compileAcornExpr(node.alternate, true)+';');
+			this.code.push(' t['+result_tmp+'] = '+ternary_if_false_body_result+';');
 			this.tmp = old_tmp; // освободим обратно исп.временных переменных
 		}
 
@@ -1392,31 +1546,33 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 	}
 };
 
-jsdbg.compileFunc = function (func, this_, custom_scope) {
+jsdbg.compileFunc = function (func, this_, custom_scope) { 
 	if (typeof(func) == 'function') 
 	try {
 		var src = func.toString();
+
 		if(src.length < 150 && src.indexOf('[native code]') > 0) {
 			func.__jsdbg_compiled = 2; // native code
 			return false;
 		}
-		
+
 		// acorn не любит пустые функции/методы
 		if(src.match(/function\s*\([^)]*\)\s*{\s*}/)) {
-			return src;
+			// return src;
+			src = src.replace('}', 'return;}');
 		}
 		
-		var ast = acorn.parse(src, {ecmaVersion: '2020'});
-		
+		var ast = acorn.parse(src, {ecmaVersion: 'latest'});
+
 		// подсунем свой scope если передали
-		if(ast.body[0].type == 'FunctionDeclaration' && custom_scope) {
+		if(ast.body.length && ast.body[0].type == 'FunctionDeclaration' && custom_scope) {
 			ast.body[0].custom_scope = custom_scope;
 		}
 		
 		// TODO методы классов часто бывают без имени
 
-		// начинаем компиляцию		
-		var new_id = jsdbg.next_id++;
+		/* Начинаем компиляцию */
+		var new_id = func.__jsdbg_id || jsdbg.next_id++; // перекомпиляция или первая компиляция?
 		this.src = src;
 		this.code = [];
 		this.tmp = 0; // текущая свободная временная переменная
@@ -1431,6 +1587,14 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 			this.compileAcornStmt(ast.body[i], 0);
 		}
 		var compiled_src = this.code.join('');
+
+		// проверим на зацикленные шаги
+		var lines = compiled_src.split('\n');
+		for(var i=lines.length-1; i>=0; i--) {
+			var m1 = lines[i].match(/case ([0-9]+):/);
+			var m2 = lines[i].match(/next_step\(([0-9]+)/);
+			if(m1 && m2 && m1[1] == m2[1]) debugger;
+		}
 
 		// внедряем breakpoints
 		if(func.__jsdbg_breakpoints) 
@@ -1469,6 +1633,7 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 		
 		jsdbg.compiled[new_id] = eval('('+compiled_src+')');
 		func.__jsdbg_id = new_id; // для надёжности
+		jsdbg.compiled[new_id].__jsdbg_compiled = true; // чтоб при callback не компилилась
 		
 		jsdbg.source[new_id] = [func.toString(), func, this_];
 		
@@ -1476,33 +1641,13 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 	} 
 	catch(ex) {
 		console.error(ex+'\n'+ex.stack);
+		if((ex.message||'').match(/Unexpected token/)) console.info(compiled_src);
+		throw ex;
 	}
 	return false;
 };
 
-jsdbg.callback = function (closure_id, parent_func_id) {
-	this.__jsdbg_id = closure_id;
-	this.__jsdbg_compiled = true;
-	jsdbg.compiled[closure_id] = this;
-	jsdbg.source[closure_id] || (jsdbg.source[closure_id] = jsdbg.source[parent_func_id]);
-
-	switch(arguments.length) {
-		case 0: throw new Error('Too few arguments!');
-		case 1: return jsdbg.ctx.__func_call(this, window);
-		case 2: return jsdbg.ctx.__func_call(this, window, arguments[1]);
-		case 3: return jsdbg.ctx.__func_call(this, window, arguments[1], arguments[2]);
-		case 4: return jsdbg.ctx.__func_call(this, window, arguments[1], arguments[2], arguments[3]);
-		case 5: return jsdbg.ctx.__func_call(this, window, arguments[1], arguments[2], arguments[3], arguments[4]);
-		case 6: return jsdbg.ctx.__func_call(this, window, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
-		case 7: return jsdbg.ctx.__func_call(this, window, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
-		case 8: return jsdbg.ctx.__func_call(this, window, arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7]);
-		default:
-			throw new Error('Not implemented yet');
-	}
-};
-
-jsdbg.debug = function (src, _this, _arguments) 
-{
+jsdbg.debug = function (src, _this, _arguments) {
 	if (typeof src == 'function') return jsdbg.debugFunc(src, _this, _arguments);
 	
 	// создаём функцию-обёртку
@@ -1534,8 +1679,7 @@ jsdbg.debug = function (src, _this, _arguments)
 	return jsdbg;
 };
 
-jsdbg.debugFunc = function (func, _this, _arguments) 
-{
+jsdbg.debugFunc = function (func, _this, _arguments) {
 	// компилируем функцию если надо
 	if(!func.__jsdbg_id) this.compileFunc(func);
 	
@@ -1559,34 +1703,42 @@ jsdbg.debugFunc = function (func, _this, _arguments)
 	}
 };
 
-jsdbg.stepIn = function ()
-{
+jsdbg.stepIn = function () { 
+	//jsdbg.ctx.__mode = 'stepin';
+	
 	for(var top_ctx = jsdbg.ctx; top_ctx.__up;)
 		top_ctx = top_ctx.__up;
 	jsdbg.ctx = top_ctx;
 
 	try {
 		jsdbg.step_limit = 1;
-		jsdbg.compiled[top_ctx.__func_id]();
+		if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+			jsdbg.compiled[jsdbg.ctx.__func_id]();
+		else
+			jsdbg.ctx.__callee();
 	}
 	catch(ex) {
-		if (ex == 'step_limit=0!') return;
-		throw ex;
+		if (ex != 'step_limit=0!') throw ex;
 	}
+
+	if(jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
+	delete jsdbg.ctx;
 };
 
-jsdbg.stepOver = function ()
-{
+jsdbg.stepOver = function () { 
 	var curr_ctx = jsdbg.ctx;
 
 	for(var top_ctx = jsdbg.ctx; top_ctx.__up;)
 		top_ctx = top_ctx.__up;
 
-	for(prt_cnt=1000; prt_cnt; prt_cnt--) {
+	for(prt_cnt=1222333; prt_cnt; prt_cnt--) {
 		try {
 			jsdbg.ctx = top_ctx;
 			jsdbg.step_limit = 1;
-			jsdbg.compiled[top_ctx.__func_id]();
+			if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+				jsdbg.compiled[jsdbg.ctx.__func_id]();
+			else
+				jsdbg.ctx.__callee();
 		}
 		catch(ex) {
 			if (ex != 'step_limit=0!') throw ex;
@@ -1594,6 +1746,9 @@ jsdbg.stepOver = function ()
 
 		// не опускались ниже -> шаг выполнен
 		if(jsdbg.ctx == curr_ctx) break;
+		
+		// если контекста нет (напр: был эксепшен) -> прерываем выполнение
+		if(!jsdbg.ctx) break;
 
 		// проверим цепочку контекстов наверх
 		for(var tmp_ctx = jsdbg.ctx; tmp_ctx.__up; tmp_ctx = tmp_ctx.__up)
@@ -1605,9 +1760,12 @@ jsdbg.stepOver = function ()
 		// в цепорке нет нашего контекста -> прерываем выполнение
 		else break;
 	}
+
+	if (jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
+	delete jsdbg.ctx;
 };
 
-jsdbg.continue = function () {   
+jsdbg.continue = function () { 
 	
 	// поднимемеся на самый верх (в начало) цепочки вызовов
 	for(var top_ctx = jsdbg.ctx; top_ctx.__up;)
@@ -1616,8 +1774,11 @@ jsdbg.continue = function () {
 	
 	// продолжим выполнение
 	try {
-		jsdbg.step_limit = 999999;
-		jsdbg.compiled[jsdbg.ctx.__func_id]();
+		jsdbg.step_limit = 55222333;
+		if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+			jsdbg.compiled[jsdbg.ctx.__func_id]();
+		else
+			jsdbg.ctx.__callee();
 	} 
 	catch(ex) {
 		if (ex == 'step_limit=0!') return;
@@ -1625,34 +1786,50 @@ jsdbg.continue = function () {
 	}
 };
 
-jsdbg.stepOut = function () 
-{
+jsdbg.stepOut = function () { 
 	// невозможно выйти наверх т.к. уже наверху
-	if(!jsdbg.ctx.__up)	return;
+	if(!jsdbg.ctx.__up) return;
 	
 	// соберём список контекстов выше
 	var list_up_ctx = [];
-	for(var up_ctx = jsdbg.ctx.__up; up_ctx.__up; up_ctx = up_ctx.__up)
+	for(var up_ctx = jsdbg.ctx.__up; up_ctx; up_ctx = up_ctx.__up)
 		list_up_ctx.push(up_ctx);
 	
+	for(var top_ctx = jsdbg.ctx; top_ctx.__up;)
+		top_ctx = top_ctx.__up;
+	
 	// идём по шагам, пока не выйдем в верхние контексты
-	for(var prt_cnt=1000; prt_cnt; prt_cnt--) {
+	for(var prt_cnt=11222333; prt_cnt; prt_cnt--) {
 		try {
+			jsdbg.ctx = top_ctx;
 			jsdbg.step_limit = 1;
-			jsdbg.compiled[jsdbg.ctx.__func_id]();
+			if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+				jsdbg.compiled[jsdbg.ctx.__func_id]();
+			else
+				jsdbg.ctx.__callee();
 		} 
 		catch(ex) {
 			if (ex != 'step_limit=0!') throw ex;
 		}
 		
+		// если контекста нет (напр: был эксепшен) -> прерываем выполнение
+		if(!jsdbg.ctx) break;
+		
 		// ищем текущий контекст в нашем списке контекстов выше
 		for(var i=0; i<list_up_ctx.length; i++)
-			if(list_up_ctx[i] == jsdbg.ctx) return;
+			if(list_up_ctx[i] == jsdbg.ctx) { 
+				jsdbg.old_ctx = jsdbg.ctx;
+				delete jsdbg.ctx;
+				return;
+			}
 	}
+	console.error('prt_cnt = '+prt_cnt);
+
+	if(jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
+	delete jsdbg.ctx;
 };
 
-jsdbg.startDebug = function (src, _this, _arguments)
-{ 
+jsdbg.startDebug = function (src, _this, _arguments) { 
 	// если уже функция, то используем её как есть
 	if (typeof src == 'function') {
 		var func = src;
@@ -1666,7 +1843,8 @@ jsdbg.startDebug = function (src, _this, _arguments)
 	}
 	
 	// компилируем
-	var compiled_src = jsdbg.compileFunc(func, _this);
+	if(!func.__jsdbg_parent_id)
+		var compiled_src = jsdbg.compileFunc(func, _this);
 
 	// подготавливаем контекст
 	jsdbg.ctx = new Ctx();
@@ -1677,7 +1855,10 @@ jsdbg.startDebug = function (src, _this, _arguments)
 	
 	try {
 		var args = _arguments || [];
-		jsdbg.compiled[func.__jsdbg_id].apply(_this||window, args);
+		if(func.__jsdbg_parent_id)
+			func.apply(_this||window, args);
+		else
+			jsdbg.compiled[func.__jsdbg_id].apply(_this||window, args);
 	} 
 	catch(ex) {
 		if (ex != 'step_limit=0!'/* && ex != 'breakpoint!'*/)
@@ -1685,8 +1866,7 @@ jsdbg.startDebug = function (src, _this, _arguments)
 	}
 };
 
-jsdbg.startDebugCtx = function (ctx, src, _this, _arguments)
-{ 
+jsdbg.startDebugCtx = function (ctx, src, _this, _arguments) { 
 	// если уже функция, то используем её как есть
 	if (typeof src == 'function') {
 		var func = src;
@@ -1702,7 +1882,9 @@ jsdbg.startDebugCtx = function (ctx, src, _this, _arguments)
 	
 	var custom_scope = {};
 	for(var f in ctx) 
-	if(f[0] != '_' && f[1] != '_' /*&& f != 'arguments'*/)
+	if(f[0] == '_' && f[1] == '_')
+		continue;
+	else
 		custom_scope[f] = true;
 	
 	// компилируем
@@ -1711,7 +1893,9 @@ jsdbg.startDebugCtx = function (ctx, src, _this, _arguments)
 	// подготавливаем контекст, копируем локальные переменные
 	jsdbg.ctx = new Ctx();
 	for(var f in ctx) 
-	if(f[0] != '_' && f[1] != '_')
+	if(f[0] == '_' && f[1] == '_')
+		continue;
+	else
 		jsdbg.ctx[f] = ctx[f];
 	
 	// незабываем проставить тек.фунцкию/метод
@@ -1737,17 +1921,23 @@ jsdbg.continueToIp = function (destination_ip) {
 	for(var top_ctx = jsdbg.ctx; top_ctx.__up;)
 		top_ctx = top_ctx.__up;
 
-	for(prt_cnt=100000; prt_cnt; prt_cnt--)
+	for(prt_cnt=55222333; prt_cnt; prt_cnt--)
 	{
 		// делаем шаг
 		try {
 			jsdbg.ctx = top_ctx;
 			jsdbg.step_limit = 1;
-			jsdbg.compiled[top_ctx.__func_id]();
+			if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+				jsdbg.compiled[jsdbg.ctx.__func_id]();
+			else
+				jsdbg.ctx.__callee();
 		}
 		catch(ex) {
 			if (ex != 'step_limit=0!') throw ex;
 		}
+		
+		// если контекста нет (напр: был эксепшен) -> прерываем выполнение
+		if(!jsdbg.ctx) break;
 
 		// дошли до нужной точки -> завершаем
 		if(jsdbg.ctx.__ip == destination_ip) break;
@@ -1763,6 +1953,9 @@ jsdbg.continueToIp = function (destination_ip) {
 		// в цепорке нет нашего контекста -> прерываем выполнение
 		else break;
 	}
+
+	if(jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
+	delete jsdbg.ctx;
 };
 
 jsdbg.prototype.test1 = function () {

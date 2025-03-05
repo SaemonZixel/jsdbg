@@ -92,6 +92,12 @@ function test1i(arg1) {
 test1i.__arguments = [true];
 test1i.__expect = 'boolean';
 
+function test1i2(arg1) {
+	return typeof __t == 'undefined';
+}
+test1i2.__arguments = [];
+test1i2.__expect = false;
+
 function test2_if1(arg1) {
 	if (arg1)
 		return 1;
@@ -166,11 +172,34 @@ function test2_if7_for(arg1) {
 test2_if7_for.__arguments = [1];
 test2_if7_for.__expect = 0;
 
-function test2_ternaryif1(arg1, arg2, arg3) {
-	return arg1 ? arg2 : arg3;
+function test2_if8(arg1) {
+	var tmp = arg1+1*2;
+	if(tmp >= 9 && tmp <= 1)
+		return 999;
+	return 5;
+}
+test2_if8.__arguments = [1];
+test2_if8.__expect = 5;
+
+function test2_if9(arg1) {
+	if(arg1 >= 9 && arg1 <= 1) {
+	}
+	return 5;
+}
+test2_if9.__arguments = [1];
+test2_if9.__expect = 5;
+
+function test2_ternaryif1(arg1_true, arg2, arg3) {
+	return arg1_true ? arg2 : arg3;
 }
 test2_ternaryif1.__arguments = [true, 123, 321];
 test2_ternaryif1.__expect = 123;
+
+function test2_ternaryif2(arg1, arg2, arg3) {
+	return arg1 == '2' ? arg2 : arg3;
+}
+test2_ternaryif2.__arguments = ['1', 123, 321];
+test2_ternaryif2.__expect = 321;
 
 function test2_for1(arg1) {
 	var tmp = arg1;
@@ -219,6 +248,16 @@ function test2_for5(arg1) {
 }
 test2_for5.__arguments = [9];
 test2_for5.__expect = 10;
+
+function test2_for5b(arg1) {
+	var tmp = arg1;
+	var i=0, limit = 8, step = 1;
+	for(/* no init */; i==3; i += step)
+		return tmp+1;
+	return arg1;
+}
+test2_for5b.__arguments = [9];
+test2_for5b.__expect = 9;
 
 function test2_for6(arg1) {
 	var tmp = arg1;
@@ -369,6 +408,34 @@ function test3h(arg1) {
 test3h.__arguments = [{a: {b: 9}}];
 test3h.__expect = 9;
 
+function test3i(arg1, arg2, arg3) {
+	return arg1.concat(arg1.toString()+arg2.toString()+arg3.toString(), arg2, arg3.toString()+arg2.toString());
+}
+test3i.__arguments = ['1', '2', '3'];
+test3i.__expect = '1123232';
+
+function test3j(arg1, arg2, arg3) {
+	return arg1.concat(arg3.toString(), arg2, arg1.toString());
+}
+test3j.__arguments = ['1', '2', '3'];
+test3j.__expect = '1321';
+
+function test3k(arg1) {
+	return arg1("123", [1,2,JSON.stringify({a:111})], function(){ return; });
+}
+test3k.__arguments = [function(){ return arguments[1]; }];
+test3k.__expect = [1,2,'{"a":111}'];
+
+function test3l(arg1) {
+	return arg1({
+		one: {title: 'one', onclick: function(){ return 'one'; }},
+		two: {title: 'two', onclick: function(){ return 'two'}}
+	});
+
+}
+test3l.__arguments = [function(struct){ return struct.one.onclick(); }];
+test3l.__expect = 'one';
+
 function test4_try1(arg1) {
 	try {
 		throw '123';
@@ -394,6 +461,16 @@ function test4_forin2(arg1) {
 }
 test4_forin2.__arguments = [{aaa: 1, bbb: 2, ccc: 3}];
 test4_forin2.__expect = 2;
+
+function test4_forin3(arg1) {
+	Object.prototype.test4_forin3 = '123';
+	for(var f in arg1)
+		if (f == 'xxx') break;
+	delete Object.prototype.test4_forin3;
+	return f;
+}
+test4_forin3.__arguments = [{aaa: 1, bbb: 2, ccc: 3}];
+test4_forin3.__expect = 'ccc';
 
 function test9_func1(arg1) {
 	var func = function(){
@@ -433,6 +510,61 @@ function test9_func4(arg1) {
 test9_func4.__arguments = [[1,2,3,4,5]];
 test9_func4.__expect = [10,20,30,40,50];
 
+function test9_func5() {
+	var tmp = {a: function(){
+		return this.b;
+	}, b: 123};
+	return tmp.a();
+}
+test9_func5.__arguments = [];
+test9_func5.__expect = undefined;
+
+function test9_func6() {
+	var tmp = {x: function(){
+		var tmp2 = {a: function(){
+			return this.b;
+		}, b: 123};
+		return tmp2.a();
+	}};
+	tmp.x();
+	return __t.length;
+}
+test9_func6.__arguments = [];
+test9_func6.__expect = 4;
+
+function test9_func7(arg1) {
+	var tmp = function() {
+		var tmp2 = function() {
+			return arg1;
+		};
+		return tmp2();
+	};
+	return tmp();
+}
+test9_func7.__arguments = [123];
+test9_func7.__expect = 123;
+
+function test9_func8(arg1) {
+	var tmp = [0, 1, 2, 3, 4];
+	var func1 = function() {
+		var func2 = function() {
+			return tmp[2];
+		};
+		return func2();
+	};
+
+	var func3 = function() {
+		var func4 = function() {
+			return tmp[4];
+		};
+		return func4();
+	};
+
+	return func1() + func3();
+}
+test9_func8.__arguments = [123];
+test9_func8.__expect = 6;
+
 function test9b(arg1) {
 	return JSON.stringify(arg1);
 }
@@ -457,6 +589,28 @@ function test9c2(arg1) {
 test9c2.__arguments = [2000];
 test9c2.__expect = "Thu Jan 01 1970 03:00:02 GMT+0300 (MSK)";
 
+function test9dbg1(base_obj, query, pos_end) {
+	var obj_pos_end = base_obj.at_(pos_end) === undefined ? base_obj.at_(query[0]+'_1') : base_obj.at_(pos_end);
+}
+test9dbg1.__arguments = [{at_:function(){ return 123; }}, ['a'], 1];
+test9dbg1.__expect = 123;
+
+function test9inspect1() {
+	Ctx;
+}
+test9inspect1.__arguments = [];
+test9inspect1.__expect = Ctx;
+
+function test9callback1(arg1) {
+	if(arg1) return alert(arg1);
+	window.test9callback1.__expect = setTimeout(function(){
+		jsdbg(test9callback1, undefined, 'test9callback1 - ok!');
+		// debugger;
+	}, 20);
+}
+test9callback1.__arguments = [];
+test9callback1.__expect = undefined;
+
 /* ========================= */
 function jsdbg_test_all() {
 	document.getElementById('test_zone').innerHTML = '';
@@ -474,6 +628,7 @@ function jsdbg_test_all() {
 	jsdbg_test('test1g');
 	jsdbg_test('test1h');
 	jsdbg_test('test1i');
+	jsdbg_test('test1i2');
 	
 	jsdbg_test('test2_if1');
 	jsdbg_test('test2_if2');
@@ -482,12 +637,16 @@ function jsdbg_test_all() {
 	jsdbg_test('test2_if5');
 	jsdbg_test('test2_if6');
 	jsdbg_test('test2_if7_for');
+	jsdbg_test('test2_if8');
+	jsdbg_test('test2_if9');
 	jsdbg_test('test2_ternaryif1');
+	jsdbg_test('test2_ternaryif2');
 	jsdbg_test('test2_for1');
 	jsdbg_test('test2_for2');
 	jsdbg_test('test2_for3');
 	jsdbg_test('test2_for4');
 	jsdbg_test('test2_for5');
+	jsdbg_test('test2_for5b');
 	jsdbg_test('test2_for6');
 	jsdbg_test('test2_while1');
 	jsdbg_test('test2_while2');
@@ -506,19 +665,31 @@ function jsdbg_test_all() {
 	jsdbg_test('test3f');
 	jsdbg_test('test3g');
 	jsdbg_test('test3h');
+	jsdbg_test('test3i');
+	jsdbg_test('test3j');
+	jsdbg_test('test3k');
+	jsdbg_test('test3l');
 	
 	jsdbg_test('test4_try1');
 	jsdbg_test('test4_forin1');
 	jsdbg_test('test4_forin2');
+	jsdbg_test('test4_forin3');
 	
 	jsdbg_test('test9_func1');
 	jsdbg_test('test9_func2');
 	jsdbg_test('test9_func3');
 	jsdbg_test('test9_func4');
+	jsdbg_test('test9_func5');
+	jsdbg_test('test9_func6');
+	jsdbg_test('test9_func7');
+	jsdbg_test('test9_func8');
 	jsdbg_test('test9b');
 	jsdbg_test('test9b2');
 	jsdbg_test('test9c');
 	jsdbg_test('test9c2');
+	jsdbg_test('test9dbg1');
+	jsdbg_test('test9callback1');
+	jsdbg_test('test9inspect1');
 }
 
 function jsdbg_test(func_name, verbose, event) 
@@ -608,6 +779,12 @@ function jsdbg_test(func_name, verbose, event)
 		else
 			test_ok = false;
 	}
+	// Function
+	else if(window[func_name].__expect instanceof Function)
+	{
+		var test_ok = result === window[func_name].__expect;
+		console.log(func_name, result, window[func_name].__expect, test_ok);
+	}
 	// object
 	else if(typeof window[func_name].__expect == 'object') 
 	{
@@ -623,7 +800,7 @@ function jsdbg_test(func_name, verbose, event)
 	// ...
 	else {
 		var test_ok = result === window[func_name].__expect;
-		console.log(func_name, result, window[func_name].__expect, test_ok)
+		console.log(func_name, result, window[func_name].__expect, test_ok);
 	}
 	
 	if (test_ok) 

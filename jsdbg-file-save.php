@@ -18,7 +18,7 @@ if(ini_get('mbstring.func_overload') > 1) {
 }
 
 if (isset($_GET['STOR']) and !empty($_GET['password']) and $_GET['password'] == $password) {
-	$filename = $_SERVER['DOCUMENT_ROOT'].$_GET['STOR'];
+	$filename = $_SERVER['DOCUMENT_ROOT'].'/'.preg_replace('~^/~', '',$_GET['STOR']);
 	$post_body = file_get_contents('php://input');
 	// $post = @urldecode($post_body);
 

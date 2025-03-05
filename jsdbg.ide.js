@@ -1,10 +1,10 @@
 /* 
  * JSDbg.js IDE
  * 
- * Version: 0.8-alpha
+ * Version: 1.0-beta
  * License: MIT
  * 
- *  Copyright (c) 2020-2024 Saemon Zixel <saemonzixel@gmail.com>
+ *  Copyright (c) 2020-2025 Saemon Zixel <saemonzixel@gmail.com>
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a copy of this software 
  *  and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -18,9 +18,10 @@
 function jsdbg_ide_onclick(event, target) {
 	var ev = event || window.event;
 	typeof ev == 'string' ? ev = {type: ev, target: (typeof target == 'string'?document.querySelector(target):target)} : ev;
-	var trg1 = ev.target || document.body.parentNode;
-	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.body.parentNode; // #document
+	var trg1 = ev.target || document.documentElement;
+	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.documentElement; // #document
 	if (trg1.nodeType && trg1.nodeType == 3) trg1 = trg1.parentNode; // #text
+	if (window.SVGElementInstance && trg1 instanceof window.SVGElementInstance) trg1 = trg1.correspondingElement;
 	var trg1p = (trg1.parentNode && trg1.parentNode.nodeType != 9) ? trg1.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
 	var trg1pp = (trg1p.parentNode && trg1p.parentNode.nodeType != 9) ? trg1p.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
 	
@@ -110,6 +111,14 @@ function jsdbg_ide_onclick(event, target) {
 	};
 	window.code_editor = code_editor;
 
+	/* add support indexOf() to SVGAnimatedString */
+	if(trg1.className && !trg1.className.indexOf) {
+		trg1.className.indexOf = function(){ return String.prototype.indexOf.apply(this.baseVal, arguments); };
+	}
+	if(trg1p.className && !trg1p.className.indexOf) {
+		trg1p.className.indexOf = function(){ return String.prototype.indexOf.apply(this.baseVal, arguments); };
+	}
+
 	// cmd_code_editor_set_breakpoint
 	if(trg1.className.indexOf('cmd_code_editor_set_breakpoint') > -1 || trg1p.className.indexOf('cmd_code_editor_set_breakpoint') > -1) {
 		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
@@ -173,9 +182,9 @@ console.log(cursor_pos, text_offset);
 		// отразим на кнопке кол-во точек останова
 		var set_brkpnt_btn = trg1p.className.indexOf('cmd_code_editor_set_breakpoint') > -1 ? trg1p : trg1;
 		if(method.__jsdbg_breakpoints.length)
-			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Set/unset breakpoint ('+method.__jsdbg_breakpoints.length+')';
+			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Breakpoint ('+method.__jsdbg_breakpoints.length+')';
 		else
-			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Set breakpoint';
+			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Breakpoint';
 	}
 
 	// cmd_code_editor_inspect_it
@@ -223,7 +232,7 @@ console.log(cursor_pos, text_offset);
 				console.info(ex.stack);
 			}
 			
-			var button = document.createElement('BUTTON');
+			/*var button = document.createElement('BUTTON');
 			button.className = "cmd_code_editor_debugger";
 			button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
 			button.ctx = jsdbg.ctx;
@@ -237,7 +246,13 @@ console.log(cursor_pos, text_offset);
 				find_near("c-toolbar").appendChild(button);
 			}
 		
-			button.click();
+			button.click();*/
+
+			/*jsdbg_ide_onclick({
+				type: 'open_debugger',
+				target: document.body,
+				ctx: jsdbg.ctx
+			});*/
 		
 			return;
 		}
@@ -286,7 +301,7 @@ console.log(cursor_pos, text_offset);
 			alert(ex+'\n'+ex.stack)
 			return;
 		}
-
+/*
 		var button = document.createElement('BUTTON');
 		button.className = "cmd_code_editor_debugger";
 		button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
@@ -300,7 +315,13 @@ console.log(cursor_pos, text_offset);
 			document.querySelector("#ide_main_window .c-toolbar").appendChild(button);
 		}
 
-		button.click();
+		button.click();*/
+
+		jsdbg_ide_onclick({
+			type: 'open_debugger',
+			target: document.body,
+			ctx: jsdbg.ctx
+		});
 		return;
 	}
 
@@ -316,8 +337,13 @@ console.log(cursor_pos, text_offset);
 		var new_name = prompt('Prototype/class name:', '');
 		if(!new_name) return;
 
+		// перепроверим существует ли уже такой класс/прототип
+		if(window[new_name]) {
+			if(!confirm('Class/prototype is already defined!\nContinue creating?')) return;
+		}
+
 		// создадим
-		eval("function "+new_name+"(){\n\tthis.initialize();\n}; window."+new_name+" = "+new_name+";");
+		eval("function "+new_name+"(){\n\t//\n}; window."+new_name+" = "+new_name+";");
 
 		// сформируем стандартный код
 		// var editor = code_editor('#'+win_id+" .c-code_editor-textarea");
@@ -339,8 +365,13 @@ console.log(cursor_pos, text_offset);
 		jsdbg_ide_onclick({type: 'click', target: opt});
 
 		// добавим в script-тег
-		var script_node = document.querySelector("script[src='"+win.dataset.fileName+"']");
-		if(script_node) script_node.dataset.prototypes = (script_node.dataset.prototypes||'')+','+new_name;
+		var script_node = document.querySelector("script[src='"+win.dataset.fileName+"']")
+		|| document.querySelector("script[src^='"+win.dataset.fileName+"?']")
+		|| document.querySelector("script[src^='"+win.dataset.fileName.replace(/^\//,'')+"']");
+		if(script_node)
+			script_node.dataset.prototypes = (script_node.dataset.prototypes||'')+','+new_name;
+		else
+			alert('Not found script tag - '+win.dataset.fileName);
 	}
 	
 	// cmd_code_editor_new_method
@@ -458,7 +489,7 @@ console.log(cursor_pos, text_offset);
 		'<button class="c-toolbar-btn cmd_code_editor_start_debug" title="Start debugging selected fragment or all text (Alt+W)"><i class="ico-bug"></i>DebugIt</button>'+
 		'<button class="c-toolbar-btn cmd_code_editor_inspect_it" title="Evalute selected fragment or all text and explore result (Alt+A,Ctrl+I)"><i class="ico-eye"></i>ExploreIt</button>'+
 		'<span class="c-toolbar-divider"></span>'+
-		'<button class="c-toolbar-btn cmd_code_editor_set_breakpoint" title="Set/unset breakpoint (Alt+T)"><i class="ico-add-brk"></i>Set/unset breakpoint</button>'+
+		'<button class="c-toolbar-btn cmd_code_editor_set_breakpoint" title="Set/unset breakpoint (Alt+T)"><i class="ico-add-brk"></i>Breakpoint</button>'+
 		'<span class="c-toolbar-divider"></span>'+
 		'<button class="c-toolbar-btn cmd_code_editor_show_class_browser"  title="Open Class Browser"><i class="ico-class-browser"></i>Class Browser</button>'+
 		'<span class="c-toolbar-divider"></span>'+
@@ -561,9 +592,12 @@ console.log(cursor_pos, text_offset);
 		var file_content_inits = [];
 
 		// ищем все прототипы/классы для этого файла
+		var file_name_regex = new RegExp('^/?'+ev.file_name.replace(/^\//,'')+'(\\?|$)', 'i');
 		var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
 		for (var clazz_name in prototype_to_file_map)
-		if (prototype_to_file_map[clazz_name] == ev.file_name) try {
+		if (clazz_name
+		&& typeof prototype_to_file_map[clazz_name] == 'string'
+		&& prototype_to_file_map[clazz_name].match(file_name_regex)) try {
 
 			var clazz = window[clazz_name];
 			if (!clazz) continue;
@@ -572,10 +606,13 @@ console.log(cursor_pos, text_offset);
 			if (clazz.toString().match(/function *\(/))
 				file_content.push("if(!window['"+clazz_name+"']) var "+clazz_name+" = "+clazz.toString()+';');
 			else
-				file_content.push("if(!window['"+clazz_name+"']) "+clazz.toString()+';');
+				// file_content.push("if(!window['"+clazz_name+"']) "+clazz.toString()+';');
+				// Пришлось заменить из-за странного поведения: ctx.__func_call(Card.newId, Card) -> arguments = [undefined, Card] ???
+				file_content.push("if(!window['"+clazz_name+"']) var "+clazz_name+" = "+clazz.toString().replace(/function[^(]+\(/, 'function (')+';');
 			
-			// методы прототипа (static)
-			for(var f in clazz) if(f in clazz.__proto__ == false && f != 'prototype' ) {
+			// методы прототипа/класса
+			for(var f in clazz)
+			if(clazz.hasOwnProperty(f) && f != 'prototype' ) {
 				if (typeof clazz[f] == 'function')
 					file_content.push(clazz_name+'.'+f+' = '+clazz[f].toString()+';');
 				// статические свойства не сохраняем (в jsdbg)
@@ -595,16 +632,32 @@ console.log(cursor_pos, text_offset);
 			}
 
 			// проверим наследование не от Object
-			if(clazz.prototype.__proto__.constructor != Object) {
+			if(clazz.prototype.__proto__.constructor != Object)
+			{
+				// извлечём название родителя из текста функции/конструктора
 				var superclazz = clazz.prototype.__proto__.constructor.toString().match(/^function ([^(]+)/);
+
+				// нету имени -> ищем в глобальном пространстве
+				if(!superclazz) {
+					for(var pt_name in window)
+					if(window[pt_name] == clazz.prototype.__proto__.constructor) {
+						superclazz = [pt_name, pt_name];
+						break;
+					}
+				}
+
 				if(superclazz) {
 					file_content_inheritances.push(clazz_name+'.prototype.__proto__ = '+superclazz[1]+'.prototype;');
-					file_content_inheritances.push(clazz_name+'.__proto__ = Object.create('+superclazz[1]+', {constructor: {value: '+clazz_name+', writable: true, configurable: true}});');
+					// file_content_inheritances.push(clazz_name+'.__proto__ = Object.create('+superclazz[1]+', {constructor: {value: '+clazz_name+', writable: true, configurable: true}});');
+					file_content_inheritances.push(clazz_name+'.__proto__ = '+superclazz[1]+';');
+				}
+				else {
+					throw 'Not found parent prototype/class for '+clazz_name+'!';
 				}
 			}
 
 			// если есть метод инициализации класса/прототипа, то его надо будет запустить
-			if(clazz.init) {
+			if(clazz.hasOwnProperty('init')) {
 				file_content_inits.push(clazz_name+'.init();');
 			}
 			
@@ -618,7 +671,10 @@ console.log(cursor_pos, text_offset);
 // 		console.log(file_content);
 // 			alert(file_content.join('\n\n'));
 
-		if(file_content.length == 0) return alert('File content is empty! (abort)');
+		if(file_content.length == 0
+		&& confirm('Warning!\nFile content is empty! Continue saving?') == false) {
+			return;
+		}
 
 		// узнаем путь к скрипту сохранения на сервер
 		var jsdbg_file_save_url = localStorage.getItem('jsdbg_file_save_url');
@@ -629,10 +685,13 @@ console.log(cursor_pos, text_offset);
 		}
 
 		var xhr = new XMLHttpRequest();
-		xhr.open('POST', jsdbg_file_save_url+'?STOR=/'+ev.file_name);
+		xhr.open('POST', jsdbg_file_save_url+(jsdbg_file_save_url.indexOf('?')>-1?'&':'?')+'STOR='+ev.file_name);
 		xhr.onreadystatechange = function(event){
 			if(xhr.readyState != 4) return;
-			alert(xhr.responseText);
+			if(xhr.status != 200)
+				alert('Error!\nFile not saved! (code: '+xhr.status+')');
+			else
+				alert(xhr.responseText);
 		};
 		xhr.send(file_content.join('\n\n')+
 			'\n\n'+file_content_inheritances.join('\n')+
@@ -648,26 +707,35 @@ console.log(cursor_pos, text_offset);
 		var xhr = new XMLHttpRequest();
 		xhr.open("GET", ev.url, true);
 		xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+		xhr.setRequestHeader("Cache-Control", "no-cache, no-store, max-age=0");
+		xhr.setRequestHeader("Expires", "Tue, 01 Jan 1980 1:00:00 GMT");
+		xhr.setRequestHeader("Pragma", "no-cache");
 // 		xhr.setRequestHeader("Origin", document.location.host);
 		xhr.onreadystatechange = function(){
-			if(xhr.readyState != 4 || xhr.responseText == '') return;
+			if(xhr.readyState != 4/* || xhr.responseText == ''*/) return;
 			// console.log(xhr.responseText);
-			if(!xhr.responseText) return;
+			//if(!xhr.responseText) return;
 
 			// ишем объявление прототипов/классов
-			var found_list = xhr.responseText.match(/if\(!window\['[a-zA-Z0-9_]+'\]\) function [a-zA-Z0-9_]+/g);
-			if(!found_list) found_list = xhr.responseText.match(/function [a-z0-9_]+\(\){/ig); // если файл сгенерирован SmalltalkToJSTranslator
+			var found_list = xhr.responseText.match(/if\(!window\['[a-zA-Z0-9_]+'\]\) function [a-zA-Z0-9_]+/g) || [];
+			found_list = found_list.concat(xhr.responseText.match(/if\(!window\['[a-zA-Z0-9_]+'\]\) var [a-zA-Z0-9_]+ = function/g) || []);
+			found_list = found_list.concat(xhr.responseText.match(/function [a-z0-9_]+\(\){/ig) || []); // если файл сгенерирован SmalltalkToJSTranslator
 			var prototype_list = [];
 			for(var i=0; i<(found_list||[]).length; i++) {
-				var prototype_name = found_list[i].match(/function +([a-zA-Z_0-9]+)/)[1];
-				prototype_list.push(prototype_name);
+				var prototype_name = (found_list[i].match(/function +([a-zA-Z_0-9]+)/) || found_list[i].match(/var ([a-zA-Z_0-9]+) = function/))[1];
+				if(prototype_list.indexOf(prototype_name) == -1)
+					prototype_list.push(prototype_name);
 			}
 
 			ev.callback(prototype_list);
 
 			// сохраним в тег script найденные прототипы
-			var script_node = document.querySelector("script[src='"+ev.url+"']");
-			if(script_node) script_node.dataset.prototypes = prototype_list.join(',');
+			var script_node = document.querySelector("script[src='"+ev.url+"']") || document.querySelector("script[src^='"+ev.url+"']") ||
+			document.querySelector("script[src^='"+ev.url.replace(/^\//,'')+"']");
+			if(script_node)
+				script_node.dataset.prototypes = prototype_list.join(',');
+			else
+				alert('Script tag with src = '+ev.url+' not found!');
 		};
 		xhr.send("");
 	}
@@ -679,6 +747,7 @@ console.log(cursor_pos, text_offset);
 		var editor = code_editor('#'+win_id+' .c-code_editor-textarea');
 
 		// загрузим код метода/функции
+		// передали внутреннюю скомпиленную функцию?
 		if(ev.method && ev.method.__jsdbg_parent_id)
 			editor.setValue(jsdbg.source[ev.method.__jsdbg_parent_id][0].replace(/function (\([^{]+){/, 'function$1{ '), -1);
 		else
@@ -686,7 +755,7 @@ console.log(cursor_pos, text_offset);
 
 		// свернём весь код
 		if(ev.foldAll && editor.session)
-			editor.session.foldAll();
+			editor.session.foldAll(1);
 
 		// сначало удалим все точки останова в случае ACE
 		if(editor.session) {
@@ -696,16 +765,17 @@ console.log(cursor_pos, text_offset);
 		}
 
 		// отобразить breakpoints
-		if(ev.method && ev.method.__jsdbg_breakpoints)
+		var breakpoints = ev.breakpoints || (ev.method||{}).__jsdbg_breakpoints;
+		if(breakpoints)
 		{
 			var set_brkpnt_btn = document.querySelector("#"+win_id+" .cmd_code_editor_set_breakpoint");
-			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Set/unset breakpoint ('+ev.method.__jsdbg_breakpoints.length+')';
+			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Breakpoint ('+breakpoints.length+')';
 
 			// расставим маркеры точек останова
 			if(editor.session) {
 				var Rng = ace.require("ace/range").Range;
-				for(var i=0; i<ev.method.__jsdbg_breakpoints.length; i++) {
-					var cursor_pos = editor.session.doc.indexToPosition(ev.method.__jsdbg_breakpoints[i]);
+				for(var i=0; i<breakpoints.length; i++) {
+					var cursor_pos = editor.session.doc.indexToPosition(breakpoints[i]);
 					editor.session.addMarker(new Rng(cursor_pos.row, cursor_pos.column, cursor_pos.row, cursor_pos.column+1), 'jsdbg-ide-ace-breakpoint', 'text', false);
 				}
 			}
@@ -713,7 +783,7 @@ console.log(cursor_pos, text_offset);
 		// нет breakpoints
 		else {
 			var set_brkpnt_btn = document.querySelector("#"+win_id+" .cmd_code_editor_set_breakpoint");
-			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Set breakpoint';
+			set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Breakpoint';
 		}
 
 		// выделим нужный фрагмент
@@ -778,6 +848,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
 });
 
 // Inspector/Watch
+// TODO InspectIt( i+=step ) // return last expr result
 function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 	
 	// [show_inspector]
@@ -785,12 +856,22 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 	{
 		var result = ev.raw;
 		if(typeof result != 'undefined' && result !== null)
-			var result_type = result.__proto__.constructor ? result.__proto__.constructor.name : {}.toString.call(result);
+		{
+			var result_type = {}.toString.call(result);
+			var constructor = result.__proto__.constructor;
+			if(constructor.name)
+				var result_type = result.__proto__.constructor.name;
+			else {
+				for(var pt_name in window)
+				if(window[pt_name] == constructor)
+					result_type = pt_name;
+			}
+		}
 		else
 			var result_type = ''+result;
 		
 		for(var id = 1;;id++)
-			if(document.getElementById("jsdbg_ide_inspector_"+id)) continue;
+			if(document.getElementById("jsdbg_inspector_"+id)) continue;
 			else break;
 		
 		var div = document.createElement("DIV");
@@ -808,7 +889,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 		'<div id="jsdbg_inspector_'+id+'_splitter" class="win-splitter type_horizontal"></div>'+
 		
 		'<div id="jsdbg_inspector_'+id+'_watch" class="win-area" style="flex:10;-webkit-box-flex:10.0;position:relative;">'+
-		'<div class="c-object_props" style="width:100%;height:100%;outl1ine:1px solid silver;position:absolute" data-win-id="jsdbg_inspector_'+id+'"></div>'+
+		'<div class="c-object_props" style="width:100%;height:100%;outl1ine:1px solid silver;position:absolute" data-win-id="jsdbg_inspector_'+id+'" data-rows-limit="400"></div>'+
 		'</div>'+
 		'<div class="win-resizer"></div>';
 		document.body.appendChild(div);
@@ -866,6 +947,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 				/* .c-object_props-col2 { width: 79.9%; min-height: 100%; display: inline-block; border: 1px solid silver; border-left: none; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; } */
 				".c-object_props-col2 { position: absolute; left: 20%; top: 0px; right: 0px; min-height: 100%; display: block; border: 1px solid silver; border-left: none; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; }"+
 				".c-object_props-key, .c-object_props-value { border-bottom: 1px solid silver; box-sizing: border-box; -moz-box-sizing: border-box; -webkit-box-sizing: border-box; padding: 1px 3px; cursor: default; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }"+
+				".c-object_props-key:hover { background: #e0e0e0; cursor: pointer; }"+
 				".c-object_props-value:empty { min-height: 1.4em }"+
 				".c-object_props-value { white-space: nowrap; overflow: hidden; cursor: text; }"+
 				".c-object_props-key.state_active { background: silver; }"+
@@ -899,9 +981,9 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 				root.states = [];
 			}
 			
-			// ...иначе обновим в ней текущее стостояние
+			// ...иначе обновим в ней текущее состояние
 			else {
-				root.states[0].scrollTop = find_near('c-object_props-cols').scrollTop;
+				// root.states[0].scrollTop = find_near('c-object_props-cols').scrollTop;
 				for(var curr = find_near('c-object_props-col1').firstElementChild; curr; curr = curr.nextElementSibling)
 					if(curr.className.indexOf('state_active') > -1) {
 						root.states[0].selected_key = curr.innerHTML;
@@ -938,7 +1020,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 				var path = [];
 				
 				var root_obj = root.states[root.states.length-1].object;
-				path.push('<a class="c-object_props-link cmd_object_props_prev_state" href="javascript:void('+(root.states.length-2)+')" data-state-num="'+(root.states.length-2)+'">' + (root_obj.toString().indexOf("[object ") === 0 ? root_obj.toString() : ({}).toString.apply(root_obj)) + '</a>');
+				path.push('<a class="c-object_props-link cmd_object_props_prev_state" href="javascript:void('+(root.states.length-2)+')" data-state-num="'+(root.states.length-2)+'">' + (root_obj.toString().indexOf("[object ") === 0 ? root_obj.toString() : (root_obj.constructor.name||Object.prototype.toString.apply(root_obj))) + '</a>');
 				
 				for(var i = root.states.length-1; i > 0; i--) {
 					var num = i - 2;
@@ -956,7 +1038,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 						if(obj == null) return "null";
 						
 						if((max_deep == undefined ? 1 : max_deep) < 1) 
-							return ({}).toString.apply(obj);
+							return obj.constructor.name||Object.prototype.toString.apply(obj);
 						
 						var json = [];
 						if(obj instanceof Array) {
@@ -965,8 +1047,19 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 							return '['+json.join(',')+']';
 						}
 						for(var fname in obj) {
-							json.push(fname+": "+json_enc(obj[fname], max_deep-1));
-							if (json.length > 15) return JSON.stringify(obj);
+							// json.push(fname+": "+json_enc(obj[fname], max_deep-1));
+							//if (json.length > 15) return JSON.stringify(obj);
+							switch(typeof(obj[fname])) {
+								case "object":
+									if(obj[fname] == null) json.push(fname+": null");
+									else json.push(fname+": "+(obj[fname].constructor.name||obj[fname].toString()));
+									break;
+								default:
+								case "numbar": json.push(fname+": "+obj[fname].toString()); break;
+								case "boolean": json.push(fname+": "+(obj[fname]?"true":"false")); break;
+								case "undefined": json.push(fname+": undefined"); break;
+							}
+							if (json.length > 15) { json.push('...'); break; }
 						}
 						return "{"+json.join(', ')+"}";
 					case "number":
@@ -983,13 +1076,20 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 			// сгенерируем HTML со содержимым объекта
 			var selected_key = ('state_to_load' in ev) ? ev.state_to_load.selected_key : '';
 			for(var f in obj)
+			if(f == '__proto__' && obj.__proto__ instanceof Ctx) {
+				col2.push('<div class="c-object_props-value" data-key="'+f+'" title="'+(({}).toString.call(obj[f]))+'">&nbsp;</div>');
+			}
 			/*if (obj instanceof Ctx && f[0] == '_' && f[1] == '_') {
 				continue;
-			}
-			else*/ if(col1_html.length > (root.getAttribute("data-rows-limit")||100)) {
+			}*/
+			else if(col1_html.length > (root.getAttribute("data-rows-limit")||100)) {
 				col1_html.push('<div class="c-object_props-key">&nbsp;</div>');
 				col2_html.push('<div class="c-object_props-value">Limit '+(root.getAttribute("data-rows-limit")||100)+' rows excedded!...</div>');
 				break;
+			}
+			// только свои функции/методы
+			else if(obj.hasOwnProperty(f) == false && typeof obj[f] == 'function') {
+				continue;
 			}
 			else {
 				row_class = '';
@@ -1012,7 +1112,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 						break;
 					default:
 						try {
-							col2.push('<div class="c-object_props-value" data-key="'+f+'" title="'+(({}).toString.call(obj[f]))+'">' +
+							col2.push('<div class="c-object_props-value" data-key="'+f+'" title="'+(obj[f].constructor.name||Object.prototype.toString.call(obj[f]))+'">' +
 							json_enc(obj[f],1).replace(/</g, '&lt;') + '</div>');
 						} catch(ex) {
 							col2.push('<div class="c-object_props-value" data-key="'+f+'" title="!!! Error: '+ex.message+' !!!">'+(({}).toString.call(obj[f]))+'</div>');
@@ -1060,7 +1160,13 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 		}
 		
 		// [dblclick] .c-object_props-key/-value
-		if(ev.type == 'dblclick' && trg1.className.match(/c-object_props-key|c-object_props-value/)) {
+		if(ev.type == 'dblclick' && trg1.className.match(/c-object_props-key|c-object_props-value/)
+		|| ev.type == 'click' && trg1.className.match(/c-object_props-key/)
+		) {
+			// если выделили мышкой текст
+			if(window.getSelection().toString() != "" && ev.type == 'click')
+				return;
+
 			var root = find_near('c-object_props');
 			
 			// не трогаем пустые строки (limit...)
@@ -1068,6 +1174,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 			
 			// сохраним название поля в которое опускаемся
 			root.states[0].selected_key = trg1.innerHTML;
+			root.states[0].scrollTop = root.children[0].scrollTop;
 			
 			jsdbg_ide_onclick({
 				type: "load", 
@@ -1136,19 +1243,29 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 							editor.className += ' type_boolean';
 							break;
 						case 'object':
+							try {
 							if(obj[curr.innerHTML] === null) {
-								editor.value = JSON.stringify(obj[curr.innerHTML]);
 								editor.className += ' type_null';
+								editor.value = JSON.stringify(obj[curr.innerHTML]);
 								break;
 							}
 							if('length' in obj[curr.innerHTML]) {
-								editor.value = JSON.stringify(obj[curr.innerHTML]);
 								editor.className += ' type_array';
+								editor.value = JSON.stringify(obj[curr.innerHTML]);
 								break;
 							}
+							}
+							catch(ex) {
+								editor.value = ex.toString();
+							}
 						default:
-							editor.value = JSON.stringify(obj[curr.innerHTML]);
+							try {
 							editor.className += ' type_'+(typeof obj[curr.innerHTML]);
+							editor.value = JSON.stringify(obj[curr.innerHTML]);
+							}
+							catch(ex) {
+								editor.value = ex.toString();
+							}
 					}
 					
 					// покажем редактор
@@ -1164,7 +1281,7 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 		// [click] .cmd_object_props_prev_state
 		// [dblclick] .c-object_props-btn_back
 		if(ev.type == 'click' && trg1.className.indexOf('cmd_object_props_prev_state') > -1
-		|| (ev.type == 'dblclick' && trg1.className.indexOf('c-object_props-btn_back') > -1)) {
+		|| (ev.type == 'click' && trg1.className.indexOf('c-object_props-btn_back') > -1)) {
 			var root = find_near('c-object_props');
 			
 			// история состояний пуста
@@ -1177,13 +1294,18 @@ function jsdbg_ide_object_props(ev, trg1, trg1p, trg1pp, find_near) {
 			for(var num = trg1.getAttribute("data-state-num") || 0; 
 				num >= 0; num--) {
 				
-				// перенесём текущее состояние вы специальный список для кнопки "Next"
+				// перенесём текущее состояние в специальный список для кнопки "Next"
 				if('previous_states' in root == false) 
 					root.previous_states = [];
 				root.previous_states.unshift(root.states.shift());
 				
-				if(num == 0)
-					jsdbg_ide_onclick({type: 'load', target: root, state_to_load: root.states[0]});
+				if(num == 0) {
+					jsdbg_ide_onclick({
+						type: 'load',
+						target: root,
+						state_to_load: root.states[0]
+					});
+				}
 			}
 		}
 		
@@ -1340,7 +1462,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		'<div class="win-area" style="display:flex;display:-webkit-box;min-height:1px;-webkit-box-flex:2">'+
 		
 		'<div id="jsdbg_class_browser_'+id+'_class_hierarchy" class="win-area" style="min-wi1dth:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
-		'<optgroup id="jsdbg_class_browser_'+id+'_js_classes" label="(no file)"></optgroup></select></div>'+
+		'<optgroup id="jsdbg_class_browser_'+id+'_js_classes" label="(unknown file)" class="hide-all-but-first-child"></optgroup></select></div>'+
 		
 		'<div id="jsdbg_class_browser_'+id+'_splitter1" class="win-splitter type_vertical"></div>'+
 		
@@ -1402,9 +1524,11 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		}
 
 		// загружаем классы не распределённые по файлам
+		// TODO сделать подгрузку при нажатии на [show all]
 		var optgroup = document.getElementById("jsdbg_class_browser_"+id+"_js_classes");
 		js_class_names.sort();
-		optgroup.innerHTML = js_class_names.join("");
+		optgroup.innerHTML = '<option class="show-all">[show all]</option>';
+		optgroup.options_html = js_class_names;
 		
 		// выведем классы по файлам
 		var select_classes = optgroup.parentNode;
@@ -1418,14 +1542,17 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 				our_optgroups[file_name] = document.createElement("OPTGROUP");
 				our_optgroups[file_name].id = "jsdbg_class_browser_" + id + "_our_classes_" + file_name.replace(/\//g, '_').replace(/\./g, '_');
 				our_optgroups[file_name].label = file_name;
+				our_optgroups[file_name].options_html = [];
 				select_classes.insertBefore(our_optgroups[file_name], select_classes.lastChild);
 			}
 
 			// добавим protoype/function в optgroup
-			our_optgroups[file_name].appendChild(document.createElement('OPTION'));
-			our_optgroups[file_name].lastChild.innerHTML = protoname;
-			our_optgroups[file_name].lastChild.dataset.fileName = file_name;
-			our_optgroups[file_name].lastChild.dataset.prototypeName = protoname;
+			our_optgroups[file_name].options_html.push('<option data-file-name="'+file_name+'" data-prototype-name="'+protoname+'">'+protoname+'</option>');
+		}
+		for(var file_name in our_optgroups) {
+			our_optgroups[file_name].options_html.sort();
+			our_optgroups[file_name].innerHTML = our_optgroups[file_name].options_html.join('');
+			delete our_optgroups[file_name].options_html;
 		}
 
 		// файлы в процессе загрузки
@@ -1461,7 +1588,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		}
 	}
 	
-	// #jsdbg_class_browser_NNN_js/our_classes
+	// #jsdbg_class_browser_123_js/our_classes
 	if(trg1.nodeName == 'OPTION' && (trg1p.id||"").match(/_(js|our)_classes/)) {
 		var win_id = trg1p.id.replace(/_(js|our)_classes.*/, "");
 		var win = document.getElementById(win_id);
@@ -1478,10 +1605,18 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 					for(var i=0; i<prototype_list.length; i++) {
 						options_html.push('<option data-file-name="'+this.dataset.fileName+'" data-prototype-name="'+prototype_list[i]+'">'+prototype_list[i]+'</option>');
 					}
+					options_html.sort();
 					this.parentNode.innerHTML = options_html.join('');
 				}).bind(trg1)
 			});
 
+			return;
+		}
+
+		// [show_all]
+		if (trg1.innerHTML.match(/show all/)) {
+			trg1p.innerHTML = trg1p.options_html.join('');
+			delete trg1p.options_html;
 			return;
 		}
 
@@ -1497,7 +1632,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			trg1p.removeChild(trg1);
 
 			// удалим из script-тега
-			var script_node = document.querySelector("script[src='"+trg1p.label+"']");
+			var script_node = document.querySelector("script[src='"+trg1p.label+"']") || document.querySelector("script[src^='"+trg1p.label+"?']");
 			if(!script_node) alert('Script tag for '+trg1p.label+' not found!');
 			else script_node.dataset.prototypes = (script_node.dataset.prototypes||'').replace(trg1.innerHTML, '');
 
@@ -1507,6 +1642,18 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 
 		var clazz = window[trg1.innerHTML] || (new Function('', '	debugger; // no prototype/class '+trg1.innerHTML+' found!'));
 		
+		// superclass
+		var superclass = clazz.__proto__;
+		if(superclass.name) {
+			document.getElementById(win_id+"_object_methods").parentNode.firstElementChild.innerHTML = 'superclass = ' + superclass.name.replace(/^Empty$/, 'Object');
+		}
+		else {
+			for(var pt_name in window) if(window[pt_name] == superclass) {
+				document.getElementById(win_id+"_object_methods").parentNode.firstElementChild.innerHTML = 'superclass = ' + pt_name;
+				break;
+			}
+		}
+
 		// object methods
 		var methods = [];
 		var list = Object.getOwnPropertyNames(clazz.prototype||{});
@@ -1514,12 +1661,6 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		if(clazz.prototype[list[i]] instanceof Function) {
 			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-method-fullname="'+trg1.innerHTML+'.prototype.'+list[i]+'">'+list[i]+'</option>');
 		}
-		// ???
-		/*if(clazz.prototype && clazz.prototype.__proto__)
-		for(var meth_name in clazz.prototype.__proto__)
-		if(clazz.prototype.__proto__[meth_name] instanceof Function) {
-			methods.push('<option data-file-name="'+(trg1.dataset.fileName||'')+'" data-prototype-name="'+trg1.innerHTML+'" data-func-name="'+meth_name+'">'+meth_name+'</option>');
-		}*/
 		methods.sort();
 		document.getElementById(win_id+"_object_methods").innerHTML = methods.join("");
 		
@@ -1553,7 +1694,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		document.getElementById(win_id+"_class_methods").parentNode.selectedIndex = -1;
 	}
 	
-	// #jsdbg_ide_class_browser_NNN_class/object_methods
+	// #jsdbg_ide_class_browser_123_(class|object)_methods
 	if(trg1.nodeName == 'OPTION' && (trg1p.id||"").match(/_(class|object)_methods/))
 	{
 		// удаление метода
@@ -1568,8 +1709,13 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 
 		var win_id = trg1p.id.replace(/_(class|object)_methods/, "");
 		var win = document.querySelector('#'+win_id);
-
 		var method_fullname = trg1.dataset.methodFullname;
+
+		// надо менять саму функцию конструктор, а не поле
+		if(method_fullname.match(/prototype\.constructor$/)) {
+			method_fullname = method_fullname.replace('.prototype.constructor', '');
+		}
+
 		var func = eval("("+method_fullname+")");
 		
 		// старый механизм
@@ -1579,7 +1725,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		win.func = func; // для breakpoints
 
 		// новый механизм
-		win.dataset.methodFullname = trg1.dataset.methodFullname;
+		win.dataset.methodFullname = method_fullname;
 
 		// загрузим исходный код метода в редактор кода
 		jsdbg_ide_onclick({
@@ -1593,7 +1739,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		jsdbg_ide_onclick({type: 'click', target: trg1p});
 	}
 
-	// #jsdbg_ide_class_browser_NNN_class/static or prototype methods
+	// #jsdbg_ide_class_browser_123_class/static or prototype methods
 	if(trg1.nodeName == 'OPTGROUP' && (trg1.id||"").match(/_(class|object)_methods/))
 	{
 		if (trg1.id.match(/class_methods/)) {
@@ -1617,7 +1763,20 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		var code_editor = code_editor('#'+win_id+' .c-code_editor-textarea');
 		var prototype_name = document.getElementById(win_id).dataset.methodFullname.match(/^[a-zA-Z0-9_]+/);
 
-		code_editor.setValue(window[prototype_name[0]].prototype.__proto__.constructor.toString().match(/^function ([_a-zA-Z0-9]+)/)[1]);
+		var constructor = window[prototype_name[0]].prototype.__proto__.constructor;
+		if(constructor.toString().match(/^function ([_a-zA-Z0-9]+)/))
+			code_editor.setValue(constructor.toString().match(/^function ([_a-zA-Z0-9]+)/)[1]);
+		else {
+			for(var pt_name in window)
+			if(window[pt_name] instanceof Function && window[pt_name] == constructor) {
+				code_editor.setValue(pt_name);
+				break;
+			}
+		}
+		code_editor.setSelectionRange(0, 999);
+		setTimeout(function(){
+			code_editor.focus();
+		}, 100);
 
 		// отметим, что выбрано наследование
 		win.dataset.methodFullname = prototype_name[0]+'.superclass';
@@ -1640,9 +1799,8 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		var editor = code_editor("#"+win_id+" .c-code_editor-textarea");
 		var new_code = editor.getValue();
 
-		// var function_header = new_code.match(/^function ([_0-9a-zA-Z]+) *\(/);
-		// var prototype_name = win.dataset.prototypeName;
-		// var func_name = (win.dataset.methodFullname.match(/[a-zA-Z0-9_]+$/)||[''])[0];
+		// надо убрать лишнии пробелы в заголовке
+		new_code = new_code.replace(/^(function[ a-z0-9_]*\([^)]*\) {) */, '$1 ');
 
 		// superclass
 		if(method_fullname.match(/^[a-z0-9_]+\.superclass/i)) {
@@ -1653,10 +1811,11 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 				if(!window[superclass]) return alert(superclass+' not found!');
 
 				clazz.prototype.__proto__ = window[superclass].prototype;
-				clazz.__proto__ = Object.create(
+				/*clazz.__proto__ = Object.create(
 					window[superclass],
 					{constructor: {value: clazz, writable: true, configurable: true}}
-				);
+				);*/
+				clazz.__proto__ = window[superclass];
 
 				// сохранить в файл
 				jsdbg_ide_onclick({
@@ -1665,10 +1824,15 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 					target: trg1
 				});
 
+				// обновим option
+				document.getElementById(win_id+'_superclass').innerHTML = 'superclass = '+superclass;
+
 				// дальше ничего не обрабатываем
 				return;
 			}
 		}
+
+		try {
 
 		// конструктор или новый прототип?
 		if(method_fullname.match(/^[a-z0-9_]+$/i))
@@ -1687,29 +1851,44 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			}
 
 			// обновляем конструктор
-			try {
-				eval('window.'+method_fullname+' = '+new_code);
-			} catch(ex) {
-				console.error(ex);
-				alert(ex);
-			}
+			eval('window.'+method_fullname+' = '+new_code);
 
 			// восстанавливаем сохранённые методы
-			for(var f in old_class)
-			if(f != 'prototype' && f in window[method_fullname].__proto__ == false)
-				window[method_fullname][f] = old_class[f];
+			for(var meth_name in old_class)
+			if(old_class.hasOwnProperty(meth_name)
+			&& meth_name.match(/(^prototype$|^__jsdbg_)/) == null)
+				window[method_fullname][meth_name] = old_class[meth_name];
+
+			// и словарь методов прототипа
 			window[method_fullname].prototype = old_class_prototype;
+
+			// также подменим конструктор (у старого класса тоже) на свой
+			window[method_fullname].prototype.constructor = window[method_fullname];
+
+			// и наследование класса/прототипа наверх
+			window[method_fullname].__proto__ = old_class.__proto__;
 		}
 
 		// метод
 		else if(method_fullname.match(/^[a-z0-9_]+\.[a-z0-9_]+/i))
 		{
-			try {
-				eval(method_fullname+' = '+new_code+';');
-			} catch(ex) {
-				console.error(ex);
-				alert(ex);
+			eval(method_fullname+' = '+new_code+';');
+		}
+
+		} catch(ex) {
+
+			if(trg1.className.indexOf('cmd_code_editor_save') > -1) {
+				trg1.style.backgroundColor = '#e66';
+				setTimeout(function(){ trg1.style.backgroundColor = null; }, 2500);
 			}
+			else {
+				trg1p.style.backgroundColor = '#e66';
+				setTimeout(function(){ trg1p.style.backgroundColor = null; }, 2500);
+			}
+
+			console.error(ex);
+			alert(ex);
+			return;
 		}
 
 		// сохранить в файл
@@ -1717,6 +1896,15 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			type: "save_file",
 			file_name: file_name,
 			target: trg1});
+
+		// если были breakpoints, то их уберём
+		if(editor.session) {
+			var markers = editor.session.getMarkers();
+			for(var marker in markers)
+				editor.session.removeMarker(marker);
+		}
+		var set_brkpnt_btn = document.querySelector("#"+win_id+" .cmd_code_editor_set_breakpoint");
+		set_brkpnt_btn.innerHTML = '<i class="ico-add-brk"></i>Breakpoint';
 
 		// обновим список методов
 		/*jsdbg_ide_onclick({
@@ -1733,6 +1921,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 	// [open_debugger]
 	if(ev.type.indexOf("open_debugger") > -1) {
 		var panel = document.getElementById("jsdbg_ide_panel");
+		if(!panel) return alert('Not found #jsdbg_ide_panel. Can`t open debugger.');
 		
 		// подключим оформление
 		jsdbg_ide_onclick({type: 'init_css'});
@@ -1752,7 +1941,13 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				return
 			}
 		}
-		var dbg_num = jsdbg_ide_onclick.debugger_win_next_num++;
+
+		// новое окно -> ищем свободный id
+		for(var dbg_num = 1;;dbg_num++)
+			if(document.getElementById("jsdbg_debugger_"+dbg_num)) continue;
+			else break;
+
+		// var dbg_num = jsdbg_ide_onclick.debugger_win_next_num++;
 		
 		// иначе добавим кнопку на панель
 		var button = document.createElement('BUTTON');
@@ -1776,7 +1971,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var dbg_win = document.getElementById(dbg_id);
 
 		// но цепочку возмём с конца (необходимо если exception был)
-		var ctx = dbg_win.ctx;
+		var ctx = dbg_win.ctx || dbg_win.curr_ctx;
 		while(ctx.__down && ctx.hasOwnProperty('__down')) ctx = ctx.__down;
 
 		// выделенный контекст для начало будет последний в цепочке
@@ -1797,21 +1992,29 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			// начнём искать полный путь до метода/функции
 			var meth_fullname = '';
 
-			// TODO curr_ctx.__callee.__jsdbg_parent_id
+			// method/function or callback?
+			var callee = (curr_ctx.__callee||{}).__jsdbg_parent_id
+				? jsdbg.source[curr_ctx.__callee.__jsdbg_parent_id][1]
+				: curr_ctx.__callee;
 
 			// new - создание объекта
-			if((curr_ctx.this||{}).__proto__ == (curr_ctx.__callee||{}).prototype)
+			if((curr_ctx.this||{}).__proto__ == (callee||{}).prototype)
 			{
-				var meth_fullname = curr_ctx.__callee.name;
+				if((callee||{}).name)
+					var meth_fullname = callee.name;
+				else
+					for(var meth_name in window)
+					if (window[meth_name] == callee)
+						var meth_fullname = meth_name;
 			}
 
 			// window.function()
 			else if(curr_ctx.this == window) {
-				if((curr_ctx.__callee||{}).name)
-					var meth_fullname = curr_ctx.__callee.name;
+				if((callee||{}).name)
+					var meth_fullname = callee.name;
 				else
 					for(var meth_name in window)
-					if (window[meth_name] == curr_ctx.__callee)
+					if (window[meth_name] == callee)
 						var meth_fullname = meth_name;
 			}
 
@@ -1819,13 +2022,26 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			else if(typeof curr_ctx.this == 'function')
 			{
 				for(var meth_name in curr_ctx.this)
-				if(curr_ctx.this[meth_name] == curr_ctx.__callee)
+				if(curr_ctx.this[meth_name] == callee)
 				{
 					// var meth_fullname = (curr_ctx.name||'?') + '.' + meth_name;
 
 					for(var super_prototype = curr_ctx.this; super_prototype.__proto__ && super_prototype.__proto__.hasOwnProperty; super_prototype = super_prototype.__proto__)
-						if(super_prototype.hasOwnProperty(meth_name)) {
-							var meth_fullname = (super_prototype.name||'?') + '.' + meth_name;
+						if(super_prototype.hasOwnProperty(meth_name))
+						{
+							// попробуем поискать в глобальном пространстве
+							if(super_prototype.name == '')
+							for(var name in window) {
+								if(window[name] == super_prototype)
+									meth_fullname = name + '.' + meth_name;
+							}
+							else
+								meth_fullname = super_prototype.name + '.' + meth_name;
+
+							// не нашли
+							if(meth_fullname == '')
+								meth_fullname = '?' + '.' + meth_name;
+
 							break;
 						}
 				}
@@ -1833,13 +2049,23 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			// object method - метод объекта?
 			else {
 				for(var meth_name in curr_ctx.this)
-				if(curr_ctx.this[meth_name] == curr_ctx.__callee)
+				if(curr_ctx.this[meth_name] == callee)
 				{
 					// var meth_fullname = (curr_ctx.this.__proto__.constructor.name||'?') + '.' + meth_name;
 
 					for(var super_prototype = curr_ctx.this; super_prototype.__proto__ && super_prototype.__proto__.hasOwnProperty; super_prototype = super_prototype.__proto__)
-						if(super_prototype.hasOwnProperty(meth_name)) {
-							var meth_fullname = ((super_prototype.constructor||{}).name||'?') + '.prototype.' + meth_name;
+						if(super_prototype.hasOwnProperty(meth_name))
+						{
+							// попробуем поискать в глобальном пространстве
+							if(!super_prototype.name)
+							for(var name in window)
+								if(window[name] == super_prototype.constructor)
+									meth_fullname = name + '.prototype.' + meth_name;
+
+							// не нашли
+							if(meth_fullname == '')
+								meth_fullname = '?' + '.prototype.' + meth_name;
+
 							break;
 						}
 				}
@@ -1886,6 +2112,9 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			type: 'load_method_to_editor',
 			target: dbg_win,
 			method: selected_ctx.__callee,
+			breakpoints: (selected_ctx.__callee||{}).__jsdbg_parent_id
+				? selected_ctx.__proto__.__callee.__jsdbg_breakpoints
+				: selected_ctx.__callee.__jsdbg_breakpoints,
 			// выделим нужный фрагмент
 			select: [Math.floor(selected_ctx.__ip / 10000), selected_ctx.__ip % 10000]
 		});
@@ -1898,7 +2127,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var id = (button.innerHTML.match(/#([0-9]+)/) || [0, 1])[1];
 		
 		var html = [
-		'<div id="jsdbg_debugger_'+id+'" class="win jsdbg-ide-debugger win-is-hidden" style="width:640px;height:615px;">',
+		'<div id="jsdbg_debugger_'+id+'" class="win jsdbg-ide-debugger win-is-hidden" style="width:640px;height:615px;" data-win-settings-local-storage="jsdbg_debugger_'+id+'">',
 			'<div id="jsdbg_debugger_'+id+'_title" class="win-header">',
 				'<span class="win-header-title">Debugger #'+id+'</span>',
 				'<a class="win-minimize-btn" href="javascript:void(0)" title="Minimize (ESC)">_</a><a class="win-close-btn" href="javascript:void(0)" title="Close">x</a>',
@@ -1916,7 +2145,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				'<button class="c-toolbar-btn cmd_code_editor_step_out" title="Step out"><i class="ico-step_out"></i></button>'+
 				'<button class="c-toolbar-btn cmd_code_editor_restart" title="Restart"><i class="ico-restart"></i></button>'+
 				'<span class="c-toolbar-divider"></span>'+
-				'<button class="c-toolbar-btn cmd_code_editor_run_to_caret" title="Run to caret"><i class="ico-run-to-caret"></i></button>'+
+				'<button class="c-toolbar-btn cmd_code_editor_continue_to_caret" title="Run to caret"><i class="ico-run-to-caret"></i></button>'+
 //				'<span class="c-toolbar-divider"></span>'+
 				'<button class="c-toolbar-btn cmd_code_editor_jump_to_caret" title="Jump to caret without executing any code"><i class="ico-jump-to-caret"></i></button>'+
 				'<span class="c-toolbar-divider"></span>'+
@@ -1945,7 +2174,8 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		if(dbg_win.className.indexOf('win-is-hidden')) {
 			win_onmouse({
 				type: 'winshow',
-				target: dbg_win
+				target: dbg_win,
+				position: 'center'
 			});
 		}
 
@@ -1957,6 +2187,15 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			for(var i=0; i<btns.length; i++)
 				btns[i].parentNode.removeChild(btns[i]);
 
+		});
+
+		// также повесим обработчик resize на случай ACE.js
+		dbg_win.addEventListener('resize', function(){
+			var editor = code_editor('#'+dbg_win.id+" .c-code_editor-textarea");
+			if(editor.resize) {
+				editor.resize(true);
+				editor.renderer.updateFull(true);
+			}
 		});
 		
 		// привяжем объект для управления дебагом
@@ -2002,58 +2241,6 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		}
 	}
 	
-	// cmd_code_editor_continue
-	if(ev.type == "click" && (trg1.className.indexOf('cmd_code_editor_continue') > -1 || trg1p.className.indexOf('cmd_code_editor_continue') > -1))
-	{
-		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
-		var dbgwin = document.getElementById(win_id);
-		
-		var curr_ctx = dbgwin.curr_ctx || dbgwin.ctx;
-		
-		try {
-			jsdbg.ctx = curr_ctx;
-			jsdbg.continue();
-
-			// закрываем окно дебагера
-			win_onmouse({type: 'winclose', target: dbgwin});
-
-		} catch(ex) {
-			if(ex != "breakpoint!") {
-				alert(ex + "\n" + ex.stack);
-				console.info(ex.stack);
-
-				// dbgwin.ctx = jsdbg.ctx; // контекст где произашёл эксепшен
-			}
-
-			dbgwin.ctx = jsdbg.ctx;
-			delete jsdbg.curr_ctx;
-
-			jsdbg_ide_onclick({
-				type: "refresh_debugger",
-				target: dbgwin});
-		}
-		
-		return;
-	}
-	
-	// cmd_code_editor_restart
-	if(trg1.className.indexOf('cmd_code_editor_restart') > -1 || trg1p.className.indexOf('cmd_code_editor_restart') > -1) {
-		var dbg_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
-		var dbg_win = document.getElementById(dbg_id);
-		var curr_ctx = dbg_win.curr_ctx || dbg_win.ctx;
-		var editor = code_editor('#'+dbg_id+" .c-code_editor-textarea");
-		
-		// перезапускаем контекст фунцкиции/метода в начало
-		curr_ctx.__restart();
-
-		dbg_win.ctx = dbg_win.curr_ctx;
-		delete dbg_win.curr_ctx;
-		
-		jsdbg_ide_onclick({
-			type: "refresh_debugger",
-			target: document.getElementById(dbg_id)});
-	}
-	
 	// cmd_code_editor_step_in/over/out
 	if(trg1.className.indexOf('cmd_code_editor_step_in') > -1 ||
 	trg1p.className.indexOf('cmd_code_editor_step_in') > -1 ||
@@ -2061,8 +2248,8 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 	trg1p.className.indexOf('cmd_code_editor_step_over') > -1 ||
 	trg1.className.indexOf('cmd_code_editor_step_out') > -1 ||
 	trg1p.className.indexOf('cmd_code_editor_step_out') > -1 ||
-	trg1.className.indexOf('cmd_code_editor_run_to_caret') > -1 ||
-	trg1p.className.indexOf('cmd_code_editor_run_to_caret') > -1) {
+	trg1.className.indexOf('cmd_code_editor_continue_to_caret') > -1 ||
+	trg1p.className.indexOf('cmd_code_editor_continue_to_caret') > -1) {
 		var dbgwin_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
 		var dbgwin = document.getElementById(dbgwin_id);
 		var start_ctx = dbgwin.curr_ctx || dbgwin.ctx;
@@ -2072,22 +2259,22 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			if(trg1.className.indexOf('cmd_code_editor_step_over') > -1 || trg1p.className.indexOf('cmd_code_editor_step_over') > -1) {
 				jsdbg.ctx = start_ctx;
 				jsdbg.stepOver();
-				dbgwin.ctx = jsdbg.ctx;
+				dbgwin.ctx = jsdbg.old_ctx;
 				delete dbgwin.curr_ctx;
 			}
 			else if(trg1.className.indexOf('cmd_code_editor_step_out') > -1 || trg1p.className.indexOf('cmd_code_editor_step_out') > -1) {
 				jsdbg.ctx = start_ctx;
 				jsdbg.stepOut();
-				dbgwin.ctx = jsdbg.ctx;
+				dbgwin.ctx = jsdbg.old_ctx;
 				delete dbgwin.curr_ctx;
 			}
 			else if(trg1.className.indexOf('cmd_code_editor_step_in') > -1 || trg1p.className.indexOf('cmd_code_editor_step_in') > -1) {
 				jsdbg.ctx = start_ctx;
 				jsdbg.stepIn();
-				dbgwin.ctx = jsdbg.ctx;
+				dbgwin.ctx = jsdbg.old_ctx;
 				delete dbgwin.curr_ctx;
 			}
-			else if(trg1.className.indexOf('cmd_code_editor_run_to_caret') > -1 || trg1p.className.indexOf('cmd_code_editor_run_to_caret') > -1) {
+			else if(trg1.className.indexOf('cmd_code_editor_continue_to_caret') > -1 || trg1p.className.indexOf('cmd_code_editor_continue_to_caret') > -1) {
 
 				// узнаем позицию курсора
 				var editor1 = code_editor('#'+dbgwin_id+' .c-code_editor-textarea');
@@ -2129,12 +2316,12 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				if(smallest_ip[0]) {
 					jsdbg.ctx = start_ctx;
 					jsdbg.continueToIp(smallest_ip[0]);
-					dbgwin.ctx = jsdbg.ctx;
+					dbgwin.ctx = jsdbg.old_ctx;
 				}
 				else if(nearest_ip[0]) {
 					jsdbg.ctx = start_ctx;
 					jsdbg.continueToIp(nearest_ip[0]);
-					dbgwin.ctx = jsdbg.ctx;
+					dbgwin.ctx = jsdbg.old_ctx;
 				}
 				else
 					return alert('Can`t found suitable step for offset '+text_offset+'!');
@@ -2142,7 +2329,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		} catch(ex) {
 			console.error(ex.stack || ex);
 			alert(ex.stack || ex);
-			dbgwin.ctx = jsdbg.ctx; // контекст где произашёл эксепшен
+			dbgwin.ctx = jsdbg.old_ctx; // контекст где произашёл эксепшен
 		}
 		
 		// выделяем фрагмент кода текущий
@@ -2154,6 +2341,61 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		jsdbg_ide_onclick({
 			type: "refresh_debugger",
 			target: dbgwin});
+
+		return;
+	}
+
+	// cmd_code_editor_restart
+	if(trg1.className.indexOf('cmd_code_editor_restart') > -1 || trg1p.className.indexOf('cmd_code_editor_restart') > -1) {
+		var dbg_id = find_near("c-toolbar", {dataset:{}}).dataset.winId;
+		var dbg_win = document.getElementById(dbg_id);
+		var curr_ctx = dbg_win.curr_ctx || dbg_win.ctx;
+		var editor = code_editor('#'+dbg_id+" .c-code_editor-textarea");
+
+		// перезапускаем контекст фунцкиции/метода в начало
+		curr_ctx.__restart();
+
+		dbg_win.ctx = dbg_win.curr_ctx;
+		delete dbg_win.curr_ctx;
+
+		jsdbg_ide_onclick({
+			type: "refresh_debugger",
+			target: document.getElementById(dbg_id)});
+	}
+
+	// cmd_code_editor_continue
+	if(ev.type == "click" && (trg1.className.indexOf('cmd_code_editor_continue') > -1 || trg1p.className.indexOf('cmd_code_editor_continue') > -1))
+	{
+		var win_id = find_near("c-toolbar", {getAttribute:function(){}}).getAttribute("data-win-id");
+		var dbgwin = document.getElementById(win_id);
+
+		var curr_ctx = dbgwin.curr_ctx || dbgwin.ctx;
+
+		try {
+			jsdbg.ctx = curr_ctx;
+			jsdbg.continue();
+
+			// закрываем окно дебагера
+			win_onmouse({type: 'winclose', target: dbgwin});
+
+		} catch(ex) {
+			if(ex != "breakpoint!") {
+				alert(ex + "\n" + ex.stack);
+				console.info(ex.stack);
+
+				// dbgwin.ctx = jsdbg.ctx; // контекст где произашёл эксепшен
+			}
+
+			if(!jsdbg.old_ctx) debugger;
+			dbgwin.ctx = jsdbg.old_ctx;
+			delete jsdbg.curr_ctx;
+
+			jsdbg_ide_onclick({
+				type: "refresh_debugger",
+				target: dbgwin});
+		}
+
+		return;
 	}
 
 	// cmd_code_editor_run - RunIt
@@ -2195,6 +2437,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				console.info(ex.stack);
 			}
 
+			/*
 			var button = document.createElement('BUTTON');
 			button.className = "cmd_code_editor_debugger";
 			button.innerHTML = "<i></i>Debugger #"+(jsdbg_ide_onclick.debugger_win_next_num++);
@@ -2205,6 +2448,14 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 
 			// откроем окно дебагера
 			button.click();
+			*/
+			jsdbg_ide_onclick({
+				type: 'open_debugger',
+				target: document.body,
+				ctx: jsdbg.ctx,
+				ex: ex
+			});
+
 			return;
 		}
 
@@ -2277,13 +2528,10 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		else
 			return alert('Can`t found suitable step for offset '+text_offset+'!');
 
-		/*try {
-
-		} catch(ex) {
-			console.error(ex.stack || ex);
-			alert(ex.stack || ex);
-			dbgwin.ctx = jsdbg.ctx; // контекст где произашёл эксепшен
-		}*/
+		// срежим все нижнии контексты
+		ctx.__down = undefined;
+		dbgwin.ctx = ctx;
+		delete dbgwin.curr_ctx;
 
 		jsdbg_ide_onclick({
 			type: "refresh_debugger",
@@ -2381,13 +2629,36 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 					target: dbg_win.querySelector('.cmd_code_editor_restart')
 				});
 			}
+			else {
+				alert('Error! Method not found in prototype! (not saved)');
+			}
 		}
 		else {
+			if(func[1].__jsdbg_parent_id)
+				throw 'Saving closure functions in the debugger is not supported!';
+
 			// function/constructor
 			for(var func_name in window)
-			if(window[func_name] == func[1])
+			if(window[func_name] == func[1]
+			|| (window[func_name] instanceof Function && window[func_name].__jsdbg_id == func[1].__jsdbg_id))
 			{
-				// надо сохранить страрые методы если класс
+				// проверим, есть ли файл куда сохранять
+				// сохраним в файл изменения
+				var file_to_save = false;
+				var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
+				for(var protoname in prototype_to_file_map)
+				if(window[protoname] == func[1]
+				|| (window[protoname] instanceof Function
+				&& window[protoname].__jsdbg_id == func[1].__jsdbg_id)
+				) {
+					file_to_save = prototype_to_file_map[protoname];
+					break;
+				}
+				if(file_to_save == false) {
+					throw 'Not found script-file for '+func_name+'! (changes not saved)';
+				}
+
+				// надо сохранить страые методы если класс/прототип
 				var old_class = window[func_name];
 				var old_class_prototype = old_class.prototype;
 
@@ -2395,31 +2666,37 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				new_func = eval('window.'+func_name+' = '+new_code.replace(/function[^(]+/, 'function'));
 
 				// восстанавливаем сохранённые методы
-				for(var f in old_class)
-				if(f != 'prototype' && f in new_func.__proto__ == false)
-					new_func[f] = old_class[f];
+				for(var meth_name in old_class)
+				if(old_class.hasOwnProperty(meth_name)
+				&& meth_name.match(/(^prototype$|^__jsdbg_)/) == null)
+					new_func[meth_name] = old_class[meth_name];
 				new_func.prototype = old_class_prototype;
+				new_func.prototype.constructor = new_func; // подменим конструктор на новый
 
-				// сохраним в файл изменения
-				var prototype_to_file_map = jsdbg_ide_onclick({type: 'list_files'});
-				for(var protoname in prototype_to_file_map)
-				if(window[protoname] == func[1])
-				{
-					// сохранить в файл
-					jsdbg_ide_onclick({
-						type: "save_file",
-						file_name: prototype_to_file_map[protoname],
-						target: trg1
-					});
-				}
+				// сохраним в файл
+				jsdbg_ide_onclick({
+					type: "save_file",
+					file_name: file_to_save,
+					target: trg1
+				});
 
 				// перекомпилируем в jsdbg
 				jsdbg.compileFunc(new_func);
-
-				// TODO рестартуем в дебаггере контекст
+			}
+			if(!new_func) {
+				throw 'Not found class/prototype: '+func[1]+'! (changes not applied)';
 			}
 		}
 		} catch(ex) {
+			if(trg1.className.indexOf('cmd_code_editor_save') > -1) {
+				trg1.style.backgroundColor = '#e66';
+				setTimeout(function(){ trg1.style.backgroundColor = null; }, 2500);
+			}
+			else {
+				trg1p.style.backgroundColor = '#e66';
+				setTimeout(function(){ trg1p.style.backgroundColor = null; }, 2500);
+			}
+
 			console.error(ex, ex.stack);
 			alert(ex);
 		}
@@ -2449,12 +2726,18 @@ function jsdbg_ide_onkey(event) {
 	
 		if(trg1.nodeName = "TEXTAREA") {
 			var textEvent = document.createEvent("TextEvent");
-			if (textEvent.initTextEvent) {
+			if (textEvent.initTextEvent && !navigator.userAgent.match(/Chrome\/([3-9][0-9]|1[0-9][0-9])\./)) {
 				textEvent.initTextEvent("textInput", true, true, null, "\t");
 				trg1.dispatchEvent(textEvent);
-			} 
+			}
+
+			/*var keyboardEvent = document.createEvent("KeyboardEvent");
+			if (keyboardEvent.initKeyboardEvent) {
+				keyboardEvent.initKeyboardEvent("keypress", true, true, null, false, false, false, false, 9, 0);
+				trg1.dispatchEvent(keyboardEvent);
+			}*/
 			
-			// для старых броузеров по старому
+			// для старых броузеров и нового Chrome по старому
 			else {
 				var cursor_pos = trg1.selectionStart;
 				trg1.value = trg1.value.substring(0, trg1.selectionStart) + '\t' + trg1.value.substring(trg1.selectionStart);
@@ -2501,8 +2784,8 @@ function jsdbg_ide_onkey(event) {
 	}
 	
 	// [textarea] ALT+A,CTR+I - InstpectIt
-	if(ev.keyCode == 65 && ev.type == "keydown" && ev.altKey 
-	|| ev.keyCode == 73 && ev.type == "keydown" && ev.ctrlKey
+	if(ev.keyCode == 65 && ev.type == "keyup" && ev.altKey
+	|| ev.keyCode == 73 && ev.type == "keyup" && ev.ctrlKey
 	&& ev.shiftKey == false) {
 		jsdbg_ide_onclick({
 			type:"click", 
@@ -2510,40 +2793,41 @@ function jsdbg_ide_onkey(event) {
 	}
 	
 	// [textarea] ALT+R - DoIt
-	if(ev.keyCode == 84 && ev.type == "keydown" && ev.altKey) {
+	if(ev.keyCode == 84 && ev.type == "keyup" && ev.altKey) {
 		jsdbg_ide_onclick({
 			type:"click", 
-			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_run")});
+			target: (document.getElementById((ev.target.id).replace(/_code_editor$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_run")});
 	}
 	
 	// [textarea] ALT+W - DebugIt
-	if(ev.keyCode == 87 && ev.type == "keydown" && ev.altKey) {
+	if(ev.keyCode == 87 && ev.type == "keyup" && ev.altKey) {
 		jsdbg_ide_onclick({
 			type:"click", 
-			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_start_debug")});
+			target: (document.getElementById((ev.target.id).replace(/_code_editor$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_start_debug")});
 	}
 	
 	// [textarea] ALT+S - Save
-	if(ev.keyCode == 83 && ev.type == "keydown" && ev.altKey) {
+	// TODO поиск окна
+	if(ev.keyCode == 83 && ev.type == "keyup" && ev.altKey) {
 		jsdbg_ide_onclick({
 			type:"click", 
-			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_save")});
+			target: (document.getElementById((ev.target.id).replace(/_code_editor$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_save")});
 	}
 	
 	// [textarea] ALT+T - Set/unset breakpoint
-	if(ev.keyCode == 116 && ev.type == "keydown" && ev.altKey) {
+	if(ev.keyCode == 116 && ev.type == "keyup" && ev.altKey) {
 		jsdbg_ide_onclick({
 			type:"click", 
-			target: (document.getElementById((ev.target.id).replace(/_src$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_set_breakpoint")});
+			target: (document.getElementById((ev.target.id).replace(/_code_editor$/, ""))||{querySelector:function(){}}).querySelector(".cmd_code_editor_set_breakpoint")});
 	}
 
 	// ALT+Q - Ace.js
-	if(ev.keyCode == 81 && ev.type == "keydown" && ev.altKey) {
+	if(ev.keyCode == 81 && ev.type == "keyup" && ev.altKey) {
 		jsdbg_ide_onclick({type: "click", target: {className: "cmd_code_editor_load_and_activate_ACE"}});
 	}
 
 	// ALT+M - Change owner file for class/prototype
-	if(ev.keyCode == 77 && ev.type == "keydown" && ev.altKey)
+	if(ev.keyCode == 77 && ev.type == "keyup" && ev.altKey)
 	{
 		// найдём текущий верхний Class Browser
 		var wins = document.querySelectorAll('.jsdbg-ide-class-browser'), top_class_browser_win;
@@ -2565,37 +2849,52 @@ function jsdbg_ide_onkey(event) {
 		// спросим новый путь к файлу
 		var new_filepath = prompt('Filepath: ', top_class_browser_win.dataset.fileName);
 		if(new_filepath == null) return;
+		new_filepath = new_filepath.replace(/^\//, '');
 
 		// найдём откуда script и в какой script тег переносить
 		var scripts = document.querySelectorAll('script');
 		var old_script_node, new_script_node;
-		for(var i in scripts) if(scripts[i].src) {
-			if(scripts[i].dataset.prototypes.match(new RegExp('(^|,| )'+prototype_name[0]+'($|,| )'))) {
+		for(var i=0; i<scripts.length;i++)
+		{
+			if((scripts[i].dataset.prototypes||'').match(new RegExp('(^|,| )'+prototype_name[0]+'($|,| )'))) {
 				old_script_node = scripts[i];
 			}
-			else if(scripts[i].getAttribute('src') == new_filepath) {
+			else if(scripts[i].src && scripts[i].getAttribute('src').match(new RegExp('^/?'+new_filepath+'(\\?|$)','i'))) {
 				new_script_node = scripts[i];
 			}
 		}
-		if(!new_script_node)
-			return alert('Script-tag with src='+new_filepath+' not found!');
+		if(!new_script_node) {
+			if(confirm('Script-tag with src='+new_filepath+' not found!\nCreate?')) {
+				new_script_node = document.createElement('SCRIPT');
+				new_script_node.setAttribute('src', new_filepath);
+				new_script_node.dataset.prototypes = '';
+				document.head.appendChild(new_script_node);
+			}
+			else return;
+		}
 
 		// переносим
 		new_script_node.dataset.prototypes = (new_script_node.dataset.prototypes || '')+','+prototype_name[0];
-		old_script_node.dataset.prototypes = old_script_node.dataset.prototypes.replace(new RegExp('(^|,| )'+prototype_name[0]+'($|,| )'), ',');
 
-		// сохраняем каждый файл
+		// сохраняем в новом файле
 		jsdbg_ide_onclick({
 			type: 'save_file',
 			target: new_script_node,
-			file_name: new_script_node.getAttribute('src')
-		});
-		jsdbg_ide_onclick({
-			type: 'save_file',
-			target: old_script_node,
-			file_name: old_script_node.getAttribute('src')
+			file_name: new_script_node.getAttribute('src').replace(/\?.*/,'')
 		});
 
+		// сохраняем старый файл
+		if(old_script_node) {
+			old_script_node.dataset.prototypes = old_script_node.dataset.prototypes.replace(new RegExp('(^|,| )'+prototype_name[0]+'($|,| )'), ',');
+
+			jsdbg_ide_onclick({
+				type: 'save_file',
+				target: old_script_node,
+				file_name: old_script_node.getAttribute('src').replace(/\?.*/,'')
+			});
+		}
+
+		// TODO перенести option в Class Browser
 	}
 }
 
@@ -2690,7 +2989,7 @@ document.documentElement.addEventListener("mouseout", jsdbg_ide_onmouse);
 document.documentElement.addEventListener("mouseover", jsdbg_ide_onmouse);
 */
 // кнопка показа IDE
-document.addEventListener('DOMContentLoaded', function(){
+var jsdbg_ide_onload = function(){
 if (!document.getElementById("jsdbg_ide_main_window_show")) {
 	var div = document.createElement("DIV");
 	div.id = "jsdbg_ide_panel";
@@ -2709,13 +3008,15 @@ if (!document.getElementById("jsdbg_ide_main_window_show")) {
 		}
 	}
 }
-});
+};
+document.addEventListener('DOMContentLoaded', jsdbg_ide_onload);
 
 function win_onmouse(event) {
-	var ev = event || window.event || { type:'', target: document.body.parentNode };
-    var trg1 = ev.target || ev.srcElement || document.body.parentNode;
-	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.body.parentNode; // #DOCUMENT
+	var ev = event || window.event || { type:'', target: document.documentElement };
+    var trg1 = ev.target || ev.srcElement || document.documentElement;
+	if (trg1.nodeType && trg1.nodeType == 9) trg1 = trg1.documentElement; // #DOCUMENT
     if (trg1.nodeType && trg1.nodeType == 3) trg1 = trg1.parentNode; // #TEXT
+    if (window.SVGElementInstance && trg1 instanceof SVGElementInstance) trg1 = trg1.correspondingElement;
 	var trg1p = (trg1.parentNode && trg1.parentNode.nodeType != 9) ? trg1.parentNode : {className:'', nodeName:'', getAttribute:function(){return ''}};
 
 	// mouseout-window
@@ -2748,6 +3049,14 @@ function win_onmouse(event) {
 				return nodes[i];
 			
 		return if_not_found_return;
+	}
+
+	/* add support indexOf(), match() to SVGAnimatedString */
+	if(trg1.className && !trg1.className.indexOf) {
+		trg1.className.indexOf = function(){ return String.prototype.indexOf.apply(this.baseVal, arguments); };
+	}
+	if(trg1.className && !trg1.className.match) {
+		trg1.className.match = function(){ return String.prototype.match.apply(this.baseVal, arguments); };
 	}
 
 	if(ev.type == 'init_win_css') {
@@ -2841,8 +3150,8 @@ function win_onmouse(event) {
 			var win_settings = JSON.parse(localStorage[key]||'{}') || {};
 			win_settings.height = parseInt(win.style.height);
 			win_settings.width = parseInt(win.style.width);
-			win_settings.top = parseInt(win.top);
-			win_settings.left = parseInt(win.left);
+			win_settings.top = parseInt(win.style.top);
+			win_settings.left = parseInt(win.style.left);
 			localStorage[key] = JSON.stringify(win_settings);
 		}
 		
@@ -2942,12 +3251,14 @@ function win_onmouse(event) {
 		if(trg1.dataset.winSettingsLocalStorage) {
 			var key = trg1.dataset.winSettingsLocalStorage;
 			var win_settings = JSON.parse(localStorage[key]||'{}') || {};
-console.log(JSON.stringify(win_settings));
-			trg1.height = win_settings.height;
-			trg1.width = win_settings.width;
-			trg1.top = win_settings.top;
-			trg1.left = win_settings.left;
-			if(ev['position']) delete ev['position'];
+			if(win_settings.height) {
+				console.log(key+' -> '+JSON.stringify(win_settings));
+				trg1.style.height = win_settings.height+'px';
+				trg1.style.width = win_settings.width+'px';
+				trg1.style.top = win_settings.top+'px';
+				trg1.style.left = win_settings.left+'px';
+				ev['position'] = 'custom';
+			}
 		}
 		
 		// уберём класс скрытия
@@ -2983,7 +3294,7 @@ console.log(JSON.stringify(win_settings));
 	// .win-close-btn, .win-close-button
 	if(ev.type == 'mouseup' && (trg1.className.indexOf('win-close-btn') > -1 || trg1.className.indexOf('win-close-button') > -1)) {
 		var trg = trg1;
-		while(trg.parentNode.className.indexOf('win') > -1) 
+		while(((trg.parentNode||{}).className||'').indexOf('win') > -1)
 			trg = trg.parentNode;
 		
 		return win_onmouse({type:'winclose', target: trg});
@@ -3001,6 +3312,7 @@ console.log(JSON.stringify(win_settings));
 		win.dispatchEvent(new Event('close'));
 		
 		// удалим окно
+		console.log(win, win.parentNode);
 		win.parentNode.removeChild(win);
 	}
 	
@@ -3171,14 +3483,32 @@ console.log("prev.start_size="+prev.start_size);
 	}
 	
 	// .win-splitter [mouseup][mouseout]
-	if((ev.type == 'mouseup' || ev.type == 'mouseout-window') && win_onmouse['dragging_splitter']) {
+	if((ev.type == 'mouseup' || ev.type == 'mouseout-window') && win_onmouse['dragging_splitter'])
+	{
+		// запустим resize окна если в окне
+		if(win_onmouse.dragging_splitter.parentNode.className.match(/(^| )win($| )/)) {
+			win_onmouse({type: 'winresize', target: win_onmouse.dragging_splitter.parentNode});
+		}
+
 		delete win_onmouse.dragging_splitter.nextElementSibling.start_size;
 		delete win_onmouse.dragging_splitter.nextElementSibling.start_flex;
 		delete win_onmouse.dragging_splitter.previousElementSibling.start_size;
 		delete win_onmouse.dragging_splitter.previousElementSibling.start_flex;
 		delete win_onmouse.dragging_splitter;
 	}
-	
+
+	// [mouseup] - подьём окна наверх
+	if(ev.type == 'mouseup') {
+		for(var trg=trg1; trg.parentNode; trg = trg.parentNode)
+			if(trg.className.indexOf && trg.className.indexOf('win ') > -1) {
+				// "поднимем" окно среди окон
+				var zindex = 1, win = trg;
+				var wins = document.querySelectorAll('.win');
+				for(var i=0; i<wins.length; i++)
+					zindex = Math.max(parseInt(wins[i].style.zIndex || '1'), zindex);
+				win.style.zIndex = zindex+1;
+			}
+	}
 }
 
 document.documentElement.addEventListener("mousedown", win_onmouse);
@@ -3218,7 +3548,7 @@ jsdbg_ide_onclick.css_styles =
 
 ".ico-run-to-caret { background-image: url('data:image/svg+xml;utf8,<svg width=\"12.44\" height=\"10.26\" viewBox=\"0 0 3.29 2.71\" xmlns=\"http://www.w3.org/2000/svg\"><path style=\"fill:black;\" d=\"M 0,2.60 V 0.128 L 2.53,1.36 Z\"/><path style=\"stroke:black;stroke-width:0.4;\" d=\"M 2.82,0.07 V 2.702\"/><path style=\"stroke:black;stroke-width:0.317;\" d=\"M 2.345,0.16 H 3.3\"/><path style=\"stroke:black;stroke-width:0.317;\" d=\"M 2.345,2.557 H 3.3\"/></svg>') !important; margin: 0 -3px 0 -4px; }\n"+
 
-".ico-jump-to-caret { background-image: url('data:image/svg+xml;utf8,<svg width=\"15.21\" height=\"10.56\" viewBox=\"0 0 4.025 2.8\" xmlns=\"http://www.w3.org/2000/svg\"><path style=\"stroke:black;stroke-width:0.423;\" d=\"M 2.00,0.109 V 2.741\"/><path style=\"stroke:black;stroke-width:0.4;\" d=\"M 1.524,0.2 H 2.47\"/><path style=\"stroke:black;stroke-width:0.4;\" d=\"M 1.52,2.6 H 2.47\"/><path style=\"fill:#808080;\" d=\"m 0.03742967,1.2267489 v 0.346225 H 0.888822 L 0.8895229,2.1704206 1.7794005,1.3979365 0.886667,0.62331218 0.89083431,1.2267489 Z\"/><path style=\"fill:#808080;\" d=\"m 3.9691466,1.2243034 v 0.346221 H 3.1196631 V 2.1543092 L 2.2282296,1.3990421 3.1196631,0.68830075 V 1.2243034 Z\"/></svg>') !important; margin: 0 -4px; }\n"+
+".ico-jump-to-caret { background-image: url('data:image/svg+xml;utf8,<svg width=\"15.21\" height=\"10.56\" viewBox=\"0 0 4.025 2.8\" xmlns=\"http://www.w3.org/2000/svg\"><path style=\"stroke:black;stroke-width:0.423;\" d=\"M 2.00,0.109 V 2.741\"/><path style=\"stroke:black;stroke-width:0.4;\" d=\"M 1.524,0.2 H 2.47\"/><path style=\"stroke:black;stroke-width:0.4;\" d=\"M 1.52,2.6 H 2.47\"/><path style=\"fill:%23808080;\" d=\"m 0.03742967,1.2267489 v 0.346225 H 0.888822 L 0.8895229,2.1704206 1.7794005,1.3979365 0.886667,0.62331218 0.89083431,1.2267489 Z\"/><path style=\"fill:%23808080;\" d=\"m 3.9691466,1.2243034 v 0.346221 H 3.1196631 V 2.1543092 L 2.2282296,1.3990421 3.1196631,0.68830075 V 1.2243034 Z\"/></svg>') !important; margin: 0 -4px; }\n"+
 
 ".ico-cog { background-image: url('data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDIwIDIwIj48cGF0aCBkPSJtMTAuMTA0IDEyLjE3MmMtMS4xOCAwLTIuMTMtLjk2LTIuMTMtMi4xMyAwLTEuMTguOTYtMi4xMyAyLjEzLTIuMTMgMS4xOCAwIDIuMTMuOTYgMi4xMyAyLjEzIDAgMS4xOC0uOTYgMi4xMy0yLjEzIDIuMTNtOC0zLjczLTIuOTMtLjUzIDEuNzItMi4zOS0yLjI2LTIuMjYtMi40NiAxLjc5LS40Ny0zaC0zLjJsLS40IDMuMTMtMi41My0xLjkyLTIuMjYgMi4yNiAxLjk5IDIuNTktMy4yLjMzdjMuMmwzLjMzLjMzLTIuMTIgMi41OSAyLjI2IDIuMjYgMi41My0yLjEyLjQgMy4zM2gzLjJsLjQtMy4yIDIuNTMgMS45OSAyLjI2LTIuMjYtMS43OS0yLjQ1IDMtLjQ3di0zLjJ6Ii8+PC9zdmc+Cg==') !important; }"+
 		
@@ -3241,7 +3571,7 @@ jsdbg_ide_onclick.css_styles =
 "#ide_main_window_settings:hover, #ide_main_window_settings:hover > i { background-color: silver; opacity: 1; }"+
 "#ide_main_window_settings > i { opacity: 0.2; width: 18px; }\n"+
 
-".c-code_editor-bg, .c-code_editor-textarea { font: 13px/16px monospace; padding: 2px; margin:0; border: 1px solid silver; -moz-box-sizing:border-box; box-sizing: border-box; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }"+
+".c-code_editor-bg, .c-code_editor-textarea { font: 13px/16px monospace; padding: 2px; margin:0; border: 1px solid silver; -moz-box-sizing:border-box; box-sizing: border-box; overflow: auto; white-space: pre-wrap; word-wrap: break-word; -moz-tab-size : 4;  -o-tab-size : 4; tab-size : 4; }"+
 
 "#ide_main_window_src { height:100%; width:100%; border-top:26px solid transparent; display:block; background:transparent; position:relative; }\n"+
 
@@ -3252,6 +3582,8 @@ jsdbg_ide_onclick.css_styles =
 ".jsdbg-ide-class-browser .win-header { padding: 10px !important; }\n"+
 
 ".jsdbg-ide-class-browser optgroup.selected { }\n"+
+".jsdbg-ide-class-browser .hide-all-but-first-child > option { display:none; }\n"+
+".jsdbg-ide-class-browser .hide-all-but-first-child > option:first-child { display:initial; }\n"+
 ".jsdbg-ide-ace-breakpoint { background: red; position: absolute; }\n"+
 ".dbg_readonly_code .c-code_editor { background-color: #ffa; }\n"+
 ".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }\n";
