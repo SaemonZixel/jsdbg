@@ -3,7 +3,7 @@ A JavaScript Debugger written on JavaScript. It recompiles JavaScript code into 
 
 # Example of usage
 
-'''
+'''html
 <!doctype html>
 <html>
 <head>
