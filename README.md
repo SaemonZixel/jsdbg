@@ -3,7 +3,7 @@ A JavaScript Debugger written on JavaScript. It recompiles JavaScript code into 
 
 # Example of usage
 
-'''html
+```html
 <!doctype html>
 <html>
 <head>
@@ -25,4 +25,4 @@ A JavaScript Debugger written on JavaScript. It recompiles JavaScript code into 
 		event /* 1st argument (optional) */)">test()</button>
 </body>
 </html>
-'''
+```
