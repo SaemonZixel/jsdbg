@@ -730,8 +730,11 @@ console.log(cursor_pos, text_offset);
 			ev.callback(prototype_list);
 
 			// сохраним в тег script найденные прототипы
-			var script_node = document.querySelector("script[src='"+ev.url+"']") || document.querySelector("script[src^='"+ev.url+"']") ||
-			document.querySelector("script[src^='"+ev.url.replace(/^\//,'')+"']");
+			var script_node = document.querySelector("script[src='"+ev.url+"']")
+			|| document.querySelector("script[src^='"+ev.url+"']")
+			|| document.querySelector("script[src^='"+ev.url.replace(/^\//,'')+"']")
+			|| document.querySelector("script[src='"+ev.url.replace(/https?:\/\/[^/]+/, '')+"']")
+			|| document.querySelector("script[src='"+ev.url.replace(/https?:\/\/[^/]+\//, '')+"']");
 			if(script_node)
 				script_node.dataset.prototypes = prototype_list.join(',');
 			else
@@ -1461,12 +1464,12 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		
 		'<div class="win-area" style="display:flex;display:-webkit-box;min-height:1px;-webkit-box-flex:2">'+
 		
-		'<div id="jsdbg_class_browser_'+id+'_class_hierarchy" class="win-area" style="min-wi1dth:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
+		'<div id="jsdbg_class_browser_'+id+'_class_hierarchy" class="win-area jsdbg-class-browser__class-hierarchy" style="min-wi1dth:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
 		'<optgroup id="jsdbg_class_browser_'+id+'_js_classes" label="(unknown file)" class="hide-all-but-first-child"></optgroup></select></div>'+
 		
 		'<div id="jsdbg_class_browser_'+id+'_splitter1" class="win-splitter type_vertical"></div>'+
 		
-		'<div id="jsdbg_class_browser_'+id+'_class_object_methods" class="win-area" style="min-wid1th:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
+		'<div id="jsdbg_class_browser_'+id+'_class_object_methods" class="win-area jsdbg-class-browser__class-object-methods" style="min-wid1th:300px;min-hei1ght:165px;-moz-box-sizing:border-box;box-sizing:border-box;position:relative"><select style="width:100%;height:100%;background:white;-moz-box-sizing:border-box;box-sizing:border-box;position:absolute;left:0;top:0;right:0;bottom:0;" multiple="true">'+
 		'<option id="jsdbg_class_browser_'+id+'_superclass">sepurclass</option>'+
 		'<optgroup id="jsdbg_class_browser_'+id+'_class_methods" label="class (static methods)"></optgroup>'+
 		'<optgroup id="jsdbg_class_browser_'+id+'_object_methods" label="object"></optgroup>'+
@@ -1532,7 +1535,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		
 		// выведем классы по файлам
 		var select_classes = optgroup.parentNode;
-		var our_optgroups = {};
+		var our_optgroups = {}, scripts_tags = document.getElementsByTagName('SCRIPT');
 		for(var protoname in prototype_to_file_map)
 		if(protoname && typeof prototype_to_file_map[protoname] == 'string') {
 			var file_name = prototype_to_file_map[protoname];
@@ -1570,6 +1573,11 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			our_optgroups[file_name] = document.createElement("OPTGROUP");
 			our_optgroups[file_name].id = "jsdbg_class_browser_" + id + "_our_classes_" + file_name.replace(/\//g, '_').replace(/\./g, '_');
 			our_optgroups[file_name].label = file_name;
+			for(var n = scripts_tags.length-1; n >=0; n--)
+			if(scripts_tags[n].src.indexOf(file_name) > -1) {
+				our_optgroups[file_name].dataset.url = scripts_tags[n].src;
+				break;
+			}
 			select_classes.insertBefore(our_optgroups[file_name], select_classes.lastChild);
 			our_optgroups[file_name].innerHTML = '<option data-file-name="'+file_name+'">[load and analize]</option>';
 		}
@@ -1599,7 +1607,7 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			trg1.innerHTML = '[loading...]';
 			jsdbg_ide_onclick({
 				type: 'get_and_analize_file',
-				url: trg1.dataset.fileName,
+				url: trg1p.dataset.url || trg1.dataset.fileName,
 				callback: (function(prototype_list){
 					var options_html = [];
 					for(var i=0; i<prototype_list.length; i++) {
@@ -1632,7 +1640,9 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 			trg1p.removeChild(trg1);
 
 			// удалим из script-тега
-			var script_node = document.querySelector("script[src='"+trg1p.label+"']") || document.querySelector("script[src^='"+trg1p.label+"?']");
+			var script_node = document.querySelector("script[src='"+trg1p.label+"']") || document.querySelector("script[src^='"+trg1p.label+"?']") ||
+			document.querySelector("script[src^='"+trg1p.label.replace(/^\//, '')+"?']")
+			|| document.querySelector("script[src=^'"+trg1p.label+"']");
 			if(!script_node) alert('Script tag for '+trg1p.label+' not found!');
 			else script_node.dataset.prototypes = (script_node.dataset.prototypes||'').replace(trg1.innerHTML, '');
 
@@ -1701,9 +1711,10 @@ function jsdbg_ide_class_browser(ev, trg1, trg1p, trg1pp, find_near, code_editor
 		if (ev.altKey) {
 			if(confirm('Delete method "'+trg1.dataset.methodFullname+'"?')) {
 				eval('delete '+trg1.dataset.methodFullname+';');
+
+				// TODO refresh list
+				trg1p.removeChild(trg1);
 			}
-			// TODO refresh list
-			trg1p.removeChild(trg1);
 			return;
 		}
 
@@ -2074,7 +2085,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			var option_caption = (meth_fullname||curr_ctx.__func||'?') + ':' + curr_ctx.__ip;
 
 			// надпись - фрагмент кода
-			var start_offset = Math.floor(curr_ctx.__ip / 10000);
+			var start_offset = Math.floor(curr_ctx.__ip / 100000);
 			if(curr_ctx.__func_id && jsdbg.source[curr_ctx.__func_id])
 				option_caption += ' - ' + jsdbg.source[curr_ctx.__func_id][0].substring(start_offset, start_offset+100);
 			else if(curr_ctx.__callee)
@@ -2116,7 +2127,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				? selected_ctx.__proto__.__callee.__jsdbg_breakpoints
 				: selected_ctx.__callee.__jsdbg_breakpoints,
 			// выделим нужный фрагмент
-			select: [Math.floor(selected_ctx.__ip / 10000), selected_ctx.__ip % 10000]
+			select: [Math.floor(selected_ctx.__ip / 100000), selected_ctx.__ip % 100000]
 		});
 	}
 
@@ -2295,12 +2306,12 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 				var next_steps = compiled_src.match(/__next_step\([0-9]+/g);
 
 				// ищем наиболее подходящий
-				var nearest_ip = [0, 10000], smallest_ip = [0, 10000];
+				var nearest_ip = [0, 100000], smallest_ip = [0, 100000];
 				for(var ii=0; ii<(next_steps||[]).length; ii++)
 				{
 					var ip = parseInt(next_steps[ii].substring(12));
-					var ip_start = Math.floor(ip / 10000);
-					var ip_end = ip % 10000;
+					var ip_start = Math.floor(ip / 100000);
+					var ip_end = ip % 100000;
 
 					// наиблежайшая?
 					if(Math.abs(text_offset - ip_start) < nearest_ip[1])
@@ -2335,8 +2346,8 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		// выделяем фрагмент кода текущий
 		/*var ide_main_window = document.getElementById(win_id+'_code_editor');
 		ide_main_window.setSelectionRange(
-			Math.round(debugger1.ctx.__ip/10000), 
-			debugger1.ctx.__ip % 10000); */
+			Math.round(debugger1.ctx.__ip/100000),
+			debugger1.ctx.__ip % 100000); */
 		
 		jsdbg_ide_onclick({
 			type: "refresh_debugger",
@@ -2503,12 +2514,12 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var next_steps = compiled_src.match(/__next_step\([0-9]+/g);
 
 		// ищем наиболее подходящий
-		var nearest_ip = [0, 10000], smallest_ip = [0, 10000];
+		var nearest_ip = [0, 100000], smallest_ip = [0, 100000];
 		for(var ii=0; ii<(next_steps||[]).length; ii++)
 		{
 			var ip = parseInt(next_steps[ii].substring(12));
-			var ip_start = Math.floor(ip / 10000);
-			var ip_end = ip % 10000;
+			var ip_start = Math.floor(ip / 100000);
+			var ip_end = ip % 100000;
 
 			// наиблежайшая?
 			if(Math.abs(text_offset - ip_start) < nearest_ip[1])
@@ -2565,7 +2576,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		var new_func = false;
 		try {
 
-		if(func[2])
+		if(func[2] && func[2].constructor != func[1] /* Функция-прототип с создаваемым объектом */)
 		{
 			// static method
 			if (func[2] instanceof Function)
@@ -2582,8 +2593,25 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 			if (func[2].constructor.prototype[meth_name] == func[1])
 			{
 				// ищем у какого именно прототипа/класса этот метод?
-				for(var obj_meths = func[2].constructor.prototype; obj_meths.__proto__;
-					obj_meths = obj_meths.__proto__)
+				for(var obj_meths = func[2].constructor.prototype;
+				obj_meths.__proto__;
+				obj_meths = obj_meths.__proto__)
+					if(obj_meths.hasOwnProperty(meth_name)) {
+						new_func = obj_meths[meth_name] = eval('('+new_code+')');
+						var prototype = obj_meths.constructor;
+						break;
+					}
+			}
+
+			// попробуем поищем у текущего this
+			var this_constr_prototype = ctx.this.constructor.prototype;
+			for (var meth_name in this_constr_prototype)
+			if (this_constr_prototype[meth_name] == func[1])
+			{
+				// ищем у какого именно прототипа/класса этот метод?
+				for(var obj_meths = this_constr_prototype;
+				obj_meths.__proto__;
+				obj_meths = obj_meths.__proto__)
 					if(obj_meths.hasOwnProperty(meth_name)) {
 						new_func = obj_meths[meth_name] = eval('('+new_code+')');
 						var prototype = obj_meths.constructor;
@@ -2635,7 +2663,7 @@ function jsdbg_ide_debugger(ev, trg1, trg1p, trg1pp, find_near, code_editor) {
 		}
 		else {
 			if(func[1].__jsdbg_parent_id)
-				throw 'Saving closure functions in the debugger is not supported!';
+				throw 'Saving closure functions in debugger is not supported!';
 
 			// function/constructor
 			for(var func_name in window)
@@ -2849,8 +2877,58 @@ function jsdbg_ide_onkey(event) {
 		// спросим новый путь к файлу
 		var new_filepath = prompt('Filepath: ', top_class_browser_win.dataset.fileName);
 		if(new_filepath == null) return;
-		new_filepath = new_filepath.replace(/^\//, '');
+		//new_filepath = new_filepath.replace(/^\//, '');
 
+		// найдём option
+		var src_opt = top_class_browser_win.querySelector(".jsdbg-class-browser__class-hierarchy option[data-prototype-name='"+prototype_name+"']");
+		if(!src_opt) return alert('Not found option of '+prototype_name);
+		var src_filename = src_opt.dataset.fileName;
+
+		var optgroups = top_class_browser_win.querySelectorAll('.jsdbg-class-browser__class-hierarchy optgroup');
+		var dst_optgroup;
+		for(var i = optgroups.length-1; i>=0; i--)
+		if(optgroups[i].label == new_filepath)
+			dst_optgroup = optgroups[i];
+		if(!dst_optgroup) return alert('No optgroup found for '+new_filepath);
+
+		// ищем скрипт и добавляем в его список
+		var script_tags = document.querySelectorAll('script[src]');
+		for(var i=script_tags.length-1; i>=0; i--)
+		if(script_tags[i].src == dst_optgroup.dataset.url) {
+			script_tags[i].dataset.prototypes = (script_tags[i].dataset.prototypes||'') + ','+prototype_name;
+
+			// сохраняем в новом файле
+			jsdbg_ide_onclick({
+				type: 'save_file',
+				target: script_tags[i],
+				file_name: script_tags[i].getAttribute('src').replace(/\?.*/,'')
+			});
+
+			// удаляем из старого скрипта
+			for(var ii=script_tags.length-1; ii>=0; ii--)
+			if(script_tags[ii].src == src_opt.parentNode.dataset.url) {
+				script_tags[ii].dataset.prototypes = (','+script_tags[ii].dataset.prototypes+',')
+					.replace(','+prototype_name+',', ',')
+					.replace(/,,/g, ',')
+					.replace(/^,/, '').replace(/,$/, '');
+				//alert(script_tags[ii].dataset.prototypes);
+
+				jsdbg_ide_onclick({
+					type: 'save_file',
+					target: script_tags[ii],
+					file_name: script_tags[ii].getAttribute('src').replace(/\?.*/,'')
+				});
+
+				// добавляем в новый optgroup
+				dst_optgroup.appendChild(src_opt);
+				src_opt.dataset.fileName = new_filepath;
+
+				return;
+			}
+		}
+
+		return alert('Error!');
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		// найдём откуда script и в какой script тег переносить
 		var scripts = document.querySelectorAll('script');
 		var old_script_node, new_script_node;
@@ -3589,7 +3667,7 @@ jsdbg_ide_onclick.css_styles =
 ".dbg_readonly_code .cmd_code_editor_save { opacity: 0.3; }\n";
 
 win_onmouse.win_css_styles = 
-".win { display: flex; display: -webkit-box; flex-direction: column; -webkit-box-orient: vertical; -webkit-box-align: stretch; -webkit-box-pack: justify; box-sizing: border-box; -moz-box-sizing: border-box; position: fixed; left: 0; top: 0; min-width: 32px; min-height: 32px; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,0.7); z-index: 99;font:12px/14px arial,helvetica,tahoma,sans-serif; border-radius:0; }"+
+".win { display: flex; display: -webkit-box; flex-direction: column; -webkit-box-orient: vertical; -webkit-box-align: stretch; -webkit-box-pack: justify; box-sizing: border-box; -moz-box-sizing: border-box; position: fixed; left: 0; top: 0; min-width: 32px; min-height: 32px; background: #fff; /*box-shadow: 0 0 6px rgba(0,0,0,0.7);*/ z-index: 99;font:12px/14px arial,helvetica,tahoma,sans-serif; border-radius:0; border: 1px solid gray; outline: 2px solid silver; }"+
 ".win-is-hidden { display: none!important; }"+
 ".win-area { -webkit-box-flex: 1.0; flex: 1; }"+
 ".win-header { padding: 15px 20px; font:normal 16px Arial,Helvetica,sans-serif; cursor: default; -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: -moz-none; -ms-user-select: none; user-select: none; }"+

@@ -1,4 +1,4 @@
-if(!window['Ctx']) var Ctx = function (parent_ctx) {
+if(!window['Ctx']) var Ctx = function (parent_ctx) { 
 	this.__ip = 0;
 	this.__t = [undefined, undefined, undefined, undefined];
 	this.__func = undefined;
@@ -13,7 +13,7 @@ if(!window['Ctx']) var Ctx = function (parent_ctx) {
 		this.__proto__ = parent_ctx;
 };
 
-Ctx.prototype.__next_step = function (label, breakpoint) {  
+Ctx.prototype.__next_step = function (label, breakpoint) { 
 	//console.log("__next_step(): label="+label+", step_limit="+(typeof jsdbg.step_limit == 'undefined' ? '(none)' : jsdbg.step_limit), this.__t);
 	
 	this.__ip = label;
@@ -23,7 +23,7 @@ Ctx.prototype.__next_step = function (label, breakpoint) {
 
 	// указан лимит шагов?
 	if(typeof jsdbg.step_limit != 'undefined') {
-		if(Math.floor(this.__ip / 10000) > (this.__ip % 10000)) {
+		if(Math.floor(this.__ip / 100000) > (this.__ip % 100000)) {
 			/* перевёрнутый, пустой шаг -> не считаем */
 		}
 		else {
@@ -115,10 +115,10 @@ Ctx.prototype.__catch = function (exception) {
 	console.log("__catch(): exception="+exception);
 	this.__exception = exception;
 	
-	var ip = Math.floor(this.__ip / 10000);
+	var ip = Math.floor(this.__ip / 100000);
 	for(var try_range in this.__catch_block) {
-		var start = Math.floor(try_range / 10000);
-		var end = try_range % 10000;
+		var start = Math.floor(try_range / 100000);
+		var end = try_range % 100000;
 		if (ip >= start && ip <= end) {
 			this.__ip = this.__catch_block[try_range];
 			return true; // поймали эксепшен успешно
@@ -230,7 +230,8 @@ Ctx.prototype.__func_call = function (func_, this_) {
 		}
 	
 		// компилируем функцию если надо
-		if( ! func_.__jsdbg_compiled && ! func_.__jsdbg_id)
+		if( ! func_.__jsdbg_compiled
+		&& func_.hasOwnProperty('__jsdbg_id') == false)
 			jsdbg.compileFunc(func_, this_);
 		
 		// создаём новый контекст для вызываемой функции/метода
@@ -289,6 +290,20 @@ Ctx.prototype.__func_call = function (func_, this_) {
 				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18]); break;
 			case 20:
 				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19]); break;
+			case 21:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20]); break;
+			case 22:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20], arguments[21]); break;
+			case 23:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20], arguments[21], arguments[22]); break;
+			case 24:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20], arguments[21], arguments[22], arguments[23]); break;
+			case 25:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20], arguments[21], arguments[22], arguments[23], arguments[24]); break;
+			case 26:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20], arguments[21], arguments[22], arguments[23], arguments[24], arguments[25]); break;
+			case 27:
+				var result = func.call(arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6], arguments[7], arguments[8], arguments[9], arguments[10], arguments[11], arguments[12], arguments[13], arguments[14], arguments[15], arguments[16], arguments[17], arguments[18], arguments[19], arguments[20], arguments[21], arguments[22], arguments[23], arguments[24], arguments[25], arguments[26]); break;
 			default:
 				alert('Ctx.prototype.__func_call: Not implemented yet! '+arguments.length);
 				throw new Error('Ctx.prototype.__func_call: Not implemented yet! '+arguments.length);
@@ -369,6 +384,16 @@ Ctx.prototype.__restart = function () {
 		case 16: 
 			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12], this.arguments[13], this.arguments[14], this.arguments[15]); 
 			break;
+		case 17: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12], this.arguments[13], this.arguments[14], this.arguments[15],
+this.arguments[16]); 
+			break;
+		case 18: 
+			jsdbg.compiled[this.__func_id].call(this.this, this.arguments[0], this.arguments[1], this.arguments[2], this.arguments[3], this.arguments[4], this.arguments[5], this.arguments[6], this.arguments[7], this.arguments[8], this.arguments[9], this.arguments[10], this.arguments[11], this.arguments[12], this.arguments[13], this.arguments[14], this.arguments[15],
+this.arguments[16],
+this.arguments[17]); 
+			break;
+
 		default:
 			debugger;
 	}
@@ -416,8 +441,17 @@ if(!window['jsdbg']) var jsdbg = function jsdbg() {
 	while(arguments.length > args.length+2) args.push(arguments[args.length+2]);
 	
 	try {
-		if(func == undefined) throw new Error('Function is undefined!');
-		jsdbg.startDebug(func, this_, args);
+		if(func == undefined) 
+			throw new Error('Function is undefined!');
+		
+		
+		var result = jsdbg.startDebug(func, this_, args);
+		
+		// запустили не скомпилированную функцию -> заберём результат
+		if(func.__jsdbg_compiled == 2 /* native */
+		|| func.__jsdbg_compiled == 3 /* no_compile directive */)
+			jsdbg.ctx.__t[0] = result;
+		
 		jsdbg.continue();
 	}
 	catch(ex) {
@@ -485,6 +519,7 @@ jsdbg.compile = function (src, id, scope) {
 };
 
 jsdbg.compileAcornStmt = function (node) { 
+	var z = 100000;
 	var code = this.code;
 	var old_tmp = this.tmp;
 	
@@ -567,8 +602,8 @@ jsdbg.compileAcornStmt = function (node) {
 	else if(node.type == "VariableDeclaration") 
 	{
 		this.code.push('ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':');
 		
 		for(var i=0; i<node.declarations.length; i++) {
 			this.compileAcornStmt(node.declarations[i]); 
@@ -584,13 +619,13 @@ jsdbg.compileAcornStmt = function (node) {
 		{
 			var code_frag = this.compileAcornExpr(node.init, true);
 			this.code.push(' ctx.__next_step('+
-				(node.start*10000+node.end)+');\n\t\tcase '+
-				(node.start*10000+node.end)+': ctx.'+node.id.name+' = '+code_frag+';');
+				(node.start*z+node.end)+');\n\t\tcase '+
+				(node.start*z+node.end)+': ctx.'+node.id.name+' = '+code_frag+';');
 		}
 		else {
 			this.code.push(' ctx.__next_step('+
-				(node.start*10000+node.end)+');\n\t\tcase '+
-				(node.start*10000+node.end)+': ctx.'+node.id.name+' = undefined;');
+				(node.start*z+node.end)+');\n\t\tcase '+
+				(node.start*z+node.end)+': ctx.'+node.id.name+' = undefined;');
 		}
 	}
 	
@@ -602,7 +637,7 @@ jsdbg.compileAcornStmt = function (node) {
 		if (!node.argument) 
 		{
 			code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ctx.__ip = -1; ctx.__func_end("'+this.func_name[this.func_name.length-1]+'"); return ctx.__t[0] = undefined;');
+			(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': ctx.__ip = -1; ctx.__func_end("'+this.func_name[this.func_name.length-1]+'"); return ctx.__t[0] = undefined;');
 		}
 		// не пустой return
 		else 
@@ -615,11 +650,11 @@ jsdbg.compileAcornStmt = function (node) {
 			
 			// если результат не в t[0], то положим туда
 			if(result_expr != 't[0]') {
-				code.push(' ctx.__next_step('+(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ctx.__ip = -1; ctx.__func_end("'+this.func_name[this.func_name.length-1]+'");');
+				code.push(' ctx.__next_step('+(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': ctx.__ip = -1; ctx.__func_end("'+this.func_name[this.func_name.length-1]+'");');
 				code.push(' return t[0] = '+result_expr+';');
 			}
 			else {
-				code.push(' ctx.__next_step('+(node.start*10000+(node.start+6))+');\n\t\tcase '+(node.start*10000+(node.start+6))+': ctx.__func_end("'+this.func_name[this.func_name.length-1]+'");');
+				code.push(' ctx.__next_step('+(node.start*z+(node.start+6))+');\n\t\tcase '+(node.start*z+(node.start+6))+': ctx.__func_end("'+this.func_name[this.func_name.length-1]+'");');
 				code.push(' return t[0];');
 			}
 		}
@@ -628,14 +663,14 @@ jsdbg.compileAcornStmt = function (node) {
 	else if(node.type == "BreakStatement") 
 	{
 		code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ctx.__next_step('+
+			(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': ctx.__next_step('+
 			this.break_ip+'); break;');
 	}
 	
 	else if(node.type == "ContinueStatement")
 	{
 		code.push(' ctx.__next_step('+
-		(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ctx.__next_step('+
+		(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': ctx.__next_step('+
 		this.continue_ip+'); break;');
 	}
 	
@@ -650,7 +685,7 @@ jsdbg.compileAcornStmt = function (node) {
 	{
 		// ! При цепочке if-else-if-else начинается дублирование 
 		var last_code_line = this.code[this.code.length-1];
-		if (last_code_line.indexOf('case '+(node.start*10000+node.end)+':') > -1) {
+		if (last_code_line.indexOf('case '+(node.start*z+node.end)+':') > -1) {
 			this.code.pop();
 			console.info(last_code_line);
 		}
@@ -658,16 +693,16 @@ jsdbg.compileAcornStmt = function (node) {
 		// начало "if"
 		var if_token_end = node.start + 2;
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':');
 		
 		// if-test
 		this.compileAcornExpr(node.test, false);
 		this.code.push(' if(!t['+this.tmp+']) ');
 		if (node.alternate)
-			this.code.push('{ ctx.__next_step('+((node.elseStart||node.alternate.start)*10000+node.alternate.end)+'); break; } '); // идём на alternate
+			this.code.push('{ ctx.__next_step('+((node.elseStart||node.alternate.start)*z+node.alternate.end)+'); break; } '); // идём на alternate
 		else
-			this.code.push('{ ctx.__next_step('+(node.end*10000+node.start)+'); break; } '); // идём на перевёрнутый
+			this.code.push('{ ctx.__next_step('+(node.end*z+node.start)+'); break; } '); // идём на перевёрнутый
 			
 		// if-true (consequent)
 		this.compileAcornStmt(node.consequent);
@@ -677,9 +712,9 @@ jsdbg.compileAcornStmt = function (node) {
 		if (node.alternate) 
 		{
 			// пусть идёт на перевёрнутый (перепрыгивает блок ниже)
-			this.code.push(' ctx.__next_step('+(node.end*10000+node.start)+'); break;');
+			this.code.push(' ctx.__next_step('+(node.end*z+node.start)+'); break;');
 			
-			this.code.push('\n\t\tcase '+((node.elseStart||node.alternate.start)*10000+node.alternate.end)+':');
+			this.code.push('\n\t\tcase '+((node.elseStart||node.alternate.start)*z+node.alternate.end)+':');
 			
 			this.compileAcornStmt(node.alternate);
 		}
@@ -694,20 +729,20 @@ jsdbg.compileAcornStmt = function (node) {
 		
 		// перевёрнутый
 		this.code.push('\n\t\tcase '+
-			(node.end*10000+node.start)+':');
+			(node.end*z+node.start)+':');
 	}
 	
 	else if(node.type == "DoWhileStatement") 
 	{
 		var old_break_ip = this.break_ip;
 		var old_continue_ip = this.continue_ip;
-		this.break_ip = (node.end*10000+node.start); // перевёртыш
+		this.break_ip = (node.end*z+node.start); // перевёртыш
 		// this.continue_ip = node.test.start*10000+node.test.end; // начало
 		
 		// сам токен do
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.start+2)+');\n\t\tcase '+
-			(node.start*10000+node.start+2)+':');
+			(node.start*z+node.start+2)+');\n\t\tcase '+
+			(node.start*z+node.start+2)+':');
 		//this.continue_ip = (node.start+2)*10000+node.end; // должен указывать на test
 		
 		// while-body
@@ -720,7 +755,7 @@ jsdbg.compileAcornStmt = function (node) {
 			if(test_end == 0 && this.src[i] == ')') test_end = i;
 			if(this.src[i] == '(') test_start = i;
 		}
-		this.continue_ip = test_start*10000+test_end;
+		this.continue_ip = test_start*z+test_end;
 		
 		// начало do-while-test
 		this.code.push('\n\t\tcase '+this.continue_ip+':');
@@ -730,10 +765,10 @@ jsdbg.compileAcornStmt = function (node) {
 		
 		// do-while
 		this.code.push('\n\t\t\tif(t['+this.tmp+']) ' +
-			'{ ctx.__next_step('+(node.start*10000+node.start+2)+'); break; };'); // идём на начало цикла
+			'{ ctx.__next_step('+(node.start*z+node.start+2)+'); break; };'); // идём на начало цикла
 			
 		// перевёртыш
-		this.code.push('\n\t\tcase '+ (node.end*10000+node.start) + ':');
+		this.code.push('\n\t\tcase '+ (node.end*z+node.start) + ':');
 		
 		this.break_ip = old_break_ip;
 		this.continue_ip = old_continue_ip;	
@@ -743,13 +778,13 @@ jsdbg.compileAcornStmt = function (node) {
 	{
 		var old_break_ip = this.break_ip;
 		var old_continue_ip = this.continue_ip;
-		this.break_ip = (node.end*10000+node.start); // перевёртыш
+		this.break_ip = (node.end*z+node.start); // перевёртыш
 		// this.continue_ip = node.test.start*10000+node.test.end; // начало
 
 		// токен while
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.start+5)+');\n\t\tcase '+
-			(node.start*10000+node.start+5)+':');
+			(node.start*z+node.start+5)+');\n\t\tcase '+
+			(node.start*z+node.start+5)+':');
 		
 		// найдём скобки while-test
 		var test_start = 0, test_end = 0;
@@ -758,7 +793,7 @@ jsdbg.compileAcornStmt = function (node) {
 			if(test_start == 0 && this.src[i] == '(') test_start = i;
 			if(this.src[i] == ')') test_end = i;
 		}
-		this.continue_ip = test_start*10000+test_end;
+		this.continue_ip = test_start*z+test_end;
 		
 		// начало while-test
 		this.code.push('\n\t\tcase '+this.continue_ip+':');
@@ -768,7 +803,7 @@ jsdbg.compileAcornStmt = function (node) {
 	
 		// while
 		this.code.push('\n\t\t\tif(!t['+this.tmp+']) ' +
-			'{ ctx.__next_step('+(node.end*10000+node.start)+'); break; };'); // идём на перевёрнутый
+			'{ ctx.__next_step('+(node.end*z+node.start)+'); break; };'); // идём на перевёрнутый
 		
 		// while-body
 		this.compileAcornStmt(node.body);
@@ -777,7 +812,7 @@ jsdbg.compileAcornStmt = function (node) {
 		this.code.push(' ctx.__next_step('+this.continue_ip+'); break;');
 		
 		// перевёртыш
-		this.code.push('\n\t\tcase '+ (node.end*10000+node.start) + ':');
+		this.code.push('\n\t\tcase '+ (node.end*z+node.start) + ':');
 		
 		this.break_ip = old_break_ip;
 		this.continue_ip = old_continue_ip;
@@ -787,15 +822,15 @@ jsdbg.compileAcornStmt = function (node) {
 	{
 		var old_break_ip = this.break_ip;
 		var old_continue_ip = this.continue_ip;
-		this.break_ip = (node.end*10000+node.start); // перевёртыш
+		this.break_ip = (node.end*z+node.start); // перевёртыш
 		this.continue_ip = node.update 
-			? node.update.start*10000+node.update.end // на инкремент
+			? node.update.start*z+node.update.end // на инкремент
 			: undefined; // немного попозже проставим
 	
 		// токен "for"
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.start+3)+');\n\t\tcase '+
-			(node.start*10000+node.start+3)+':');
+			(node.start*z+node.start+3)+');\n\t\tcase '+
+			(node.start*z+node.start+3)+':');
 	
 		// for-init
 		if (!node.init) { 
@@ -804,8 +839,8 @@ jsdbg.compileAcornStmt = function (node) {
 			node.init = {start: init_separator, end: init_separator+1, declarations: []};
 			
 			this.code.push(' ctx.__next_step('+
-				(node.init.start*10000+node.init.end)+');\n\t\tcase '+
-				(node.init.start*10000+node.init.end)+':');
+				(node.init.start*z+node.init.end)+');\n\t\tcase '+
+				(node.init.start*z+node.init.end)+':');
 		}
 		else
 //		for(var i=0; i<node.init.declarations.length; i++)
@@ -820,7 +855,7 @@ jsdbg.compileAcornStmt = function (node) {
 			node.test = {start: test_separator, end: test_separator+1, declarations: []};
 			
 			// пригодиться ниже, после update куда перескакивать
-			var if_test_ip = (node.test.start*10000+node.test.end);
+			var if_test_ip = (node.test.start*z+node.test.end);
 			
 			this.code.push(' ctx.__next_step('+
 				if_test_ip+');\n\t\tcase '+
@@ -829,7 +864,7 @@ jsdbg.compileAcornStmt = function (node) {
 		else {
 			// пригодиться ниже, после update куда перескакивать
 			var test_separator = this.src.indexOf(';', node.test.end);
-			var if_test_ip = node.test.start*10000+test_separator+1;
+			var if_test_ip = node.test.start*z+test_separator+1;
 			
 			this.code.push(' ctx.__next_step('+
 				if_test_ip+');\n\t\tcase '+
@@ -840,7 +875,7 @@ jsdbg.compileAcornStmt = function (node) {
 		
 		// если for-test == false -> уходим на перевётыш (конец цикла)
 		this.code.push('\n\t\t\tif(!t['+this.tmp+']) ');
-		this.code.push('{ ctx.__next_step('+ (node.end*10000+node.start)+ '); break; }'); 
+		this.code.push('{ ctx.__next_step('+ (node.end*z+node.start)+ '); break; }'); 
 		
 		// for-body
 		this.compileAcornStmt(node.body);
@@ -851,11 +886,11 @@ jsdbg.compileAcornStmt = function (node) {
 			if(update_separator == -1) debugger;
 			node.update = {start: update_separator, end: update_separator+1, declarations: []};
 			
-			this.code.push(' ctx.__next_step('+
-				(node.update.start*10000+node.update.end)+');\n\t\tcase '+
-				(node.update.start*10000+node.update.end)+':');
+			this.code.push('ctx.__next_step('+
+				(node.update.start*z+node.update.end)+');\n\t\tcase '+
+				(node.update.start*z+node.update.end)+':');
 				
-			this.continue_ip = node.update.start*10000+node.update.end;
+			this.continue_ip = node.update.start*z+node.update.end;
 		}
 		else
 			this.compileAcornStmt(node.update);
@@ -864,7 +899,7 @@ jsdbg.compileAcornStmt = function (node) {
 		this.code.push(' ctx.__next_step('+if_test_ip+'); break;');
 		
 		// for-end перевёртыш
-		this.code.push('\n\t\tcase '+(node.end*10000+node.start)+':');
+		this.code.push('\n\t\tcase '+(node.end*z+node.start)+':');
 		
 		this.break_ip = old_break_ip;
 		this.continue_ip = old_continue_ip;
@@ -874,41 +909,44 @@ jsdbg.compileAcornStmt = function (node) {
 	{
 		var old_break_ip = this.break_ip;
 		var old_continue_ip = this.continue_ip;
-		this.break_ip = (node.end*10000+node.start); // перевёртыш
-		this.continue_ip = (node.left.start*10000+node.left.end); // на след.ключ
-		var tmp_var = 'ctx.__forin_'+(node.start*10000+node.end); // список ключей
+		this.break_ip = (node.end*z+node.start); // перевёртыш
+		this.continue_ip = (node.left.start*z+node.left.end); // на след.ключ
+		var tmp_var = 'ctx.__forin_'+(node.start*z+node.end); // список ключей
 	
 		// for-right
 		this.code.push(' ctx.__next_step('+
-			(node.right.start*10000+node.right.end)+');\n\t\tcase '+
-			(node.right.start*10000+node.right.end)+':');
+			(node.right.start*z+node.right.end)+');\n\t\tcase '+
+			(node.right.start*z+node.right.end)+':');
 		var forin_right = this.compileAcornExpr(node.right, true);
 		
 		// список ключей и индекс
 		this.code.push(tmp_var+' = Object.keys('+forin_right+'), '+tmp_var+'_i = 0;');
 		
 		// регистрируем в scope переменную цикла
-		this.scope[0][node.left.declarations[0].id.name] = true;
+		var for_var_name = node.left.name
+			? node.left.name
+			: node.left.declarations[0].id.name;
+		this.scope[0][for_var_name] = true;
 		
 		// начинаем тело цикла
 		this.code.push(' ctx.__next_step('+
-			(node.left.start*10000+node.left.end)+');\n\t\tcase '+
-			(node.left.start*10000+node.left.end)+':');
+			(node.left.start*z+node.left.end)+');\n\t\tcase '+
+			(node.left.start*z+node.left.end)+':');
 			
 		// проверяем, можно ли взять след. ключ
 		this.code.push('\n\t\t\tif('+tmp_var+'.length <= '+tmp_var+'_i) ');
-		this.code.push('{ ctx.__next_step('+ (node.end*10000+node.start)+ '); break; }'); 
+		this.code.push('{ ctx.__next_step('+ (node.end*z+node.start)+ '); break; }'); 
 		// если можно -> берём
-		this.code.push('\n\t\t\telse ctx.'+node.left.declarations[0].id.name+' = '+tmp_var+'['+tmp_var+'_i++];');
+		this.code.push('\n\t\t\telse ctx.'+for_var_name+' = '+tmp_var+'['+tmp_var+'_i++];');
 		
 		// for-body
 		this.compileAcornStmt(node.body);
 
 		// назад к for-left
-		this.code.push(' ctx.__next_step('+(node.left.start*10000+node.left.end)+'); break;');
+		this.code.push(' ctx.__next_step('+(node.left.start*z+node.left.end)+'); break;');
 		
 		// for-end перевёртыш
-		this.code.push('\n\t\tcase '+(node.end*10000+node.start)+':');
+		this.code.push('\n\t\tcase '+(node.end*z+node.start)+':');
 		
 		this.break_ip = old_break_ip;
 		this.continue_ip = old_continue_ip;
@@ -917,11 +955,11 @@ jsdbg.compileAcornStmt = function (node) {
 	else if(node.type == "SwitchStatement") 
 	{
 		var old_break_ip = this.break_ip;
-		this.break_ip = (node.end*10000+node.start); // перевёртыш
+		this.break_ip = (node.end*z+node.start); // перевёртыш
 	
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':');
 		
 		// case-value
 		this.compileAcornStmt(node.discriminant);
@@ -936,14 +974,14 @@ jsdbg.compileAcornStmt = function (node) {
 				
 			// case X:
 			else 
-				this.code.push('\n\t\t\tif(t['+this.tmp+'] == '+node.cases[i].test.raw+') { ctx.__next_step('+(node.cases[i].start*10000+node.cases[i].end)+'); break; }');
+				this.code.push('\n\t\t\tif(t['+this.tmp+'] == '+node.cases[i].test.raw+') { ctx.__next_step('+(node.cases[i].start*z+node.cases[i].end)+'); break; }');
 		}
 		if (default_case) {
-			this.code.push('\n\t\t\tctx.__next_step('+ (default_case.start*10000+default_case.end)+ '); break;');
+			this.code.push('\n\t\t\tctx.__next_step('+ (default_case.start*z+default_case.end)+ '); break;');
 		}
 		// иначе сразу идём на перевёртыш
 		else {
-			this.code.push('\n\t\t\tctx.__next_step('+ (node.end*10000+node.start)+ '); break;');
+			this.code.push('\n\t\t\tctx.__next_step('+ (node.end*z+node.start)+ '); break;');
 		}
 		
 		// case-body
@@ -954,7 +992,7 @@ jsdbg.compileAcornStmt = function (node) {
 				continue;
 				
 			// case X:
-			this.code.push('\n\t\tcase '+(node.cases[i].start*10000+ node.cases[i].end)+':');
+			this.code.push('\n\t\tcase '+(node.cases[i].start*z+ node.cases[i].end)+':');
 			
 			// case-body
 			for(var ii=0; ii<node.cases[i].consequent.length; ii++)
@@ -962,7 +1000,7 @@ jsdbg.compileAcornStmt = function (node) {
 		}
 		// case-body-default:
 		if (default_case) {
-			this.code.push('\n\t\tcase '+(default_case.start*10000+ default_case.end)+':');
+			this.code.push('\n\t\tcase '+(default_case.start*z+ default_case.end)+':');
 			
 			// case-body
 			for(var ii=0; ii<default_case.consequent.length; ii++)
@@ -970,7 +1008,7 @@ jsdbg.compileAcornStmt = function (node) {
 		}
 		
 		// перевёртыш
-		this.code.push('\n\t\tcase '+(node.end*10000+node.start)+': ');
+		this.code.push('\n\t\tcase '+(node.end*z+node.start)+': ');
 		
 		this.break_ip = old_break_ip;
 	}
@@ -978,13 +1016,13 @@ jsdbg.compileAcornStmt = function (node) {
 	else if(node.type == "TryStatement") 
 	{
 		// зарегистрируем catch-блок
-		this.code.push(' ctx.__try_start('+(node.block.start*10000+node.block.end)+', '+(node.handler.start*10000+node.handler.end)+');');
+		this.code.push(' ctx.__try_start('+(node.block.start*z+node.block.end)+', '+(node.handler.start*10000+node.handler.end)+');');
 		
 		// try-body
 		this.compileAcornStmt(node.block);
 		
 		// переход на перевёртыш
-		this.code.push(' ctx.__next_step('+(node.end*10000+node.start)+'); break; ');
+		this.code.push(' ctx.__next_step('+(node.end*z+node.start)+'); break; ');
 
 		// переменную со исключением регистрируем в scope
 		var old_ex = node.handler.param.name in this.scope[0];
@@ -992,7 +1030,7 @@ jsdbg.compileAcornStmt = function (node) {
 		
 		// catch-body
 		this.code.push('\n\t\tcase '+
-			(node.handler.start*10000+node.handler.end)+': ');
+			(node.handler.start*z+node.handler.end)+': ');
 		this.code.push('ctx.'+node.handler.param.name+' = ctx.__exception;');
 		this.compileAcornStmt(node.handler.body);
 		
@@ -1002,7 +1040,7 @@ jsdbg.compileAcornStmt = function (node) {
 		
 		// перевёртыш, выходим из try-catch
 		this.code.push('\n\t\tcase '+
-			(node.end*10000+node.start)+': ctx.__try_end('+(node.block.start*10000+node.block.end)+', '+(node.handler.start*10000+node.handler.end)+');');
+			(node.end*z+node.start)+': ctx.__try_end('+(node.block.start*z+node.block.end)+', '+(node.handler.start*z+node.handler.end)+');');
 	}
 	
 	else if(node.type == "ThrowStatement") 
@@ -1012,7 +1050,7 @@ jsdbg.compileAcornStmt = function (node) {
 			
 		// выбрасим исключение
 		code.push(' ctx.__next_step('+
-		(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': throw '+result_expr+';');
+		(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': throw '+result_expr+';');
 	}
 	
 	else if(node.type == "EmptyStatement") 
@@ -1023,7 +1061,7 @@ jsdbg.compileAcornStmt = function (node) {
 	else if(node.type == "DebuggerStatement") 
 	{
 		code.push('debugger; ctx.__next_step('+
-		(node.start*10000+node.end)+');\n\t\tcase '+(node.start*10000+node.end)+': ');
+		(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': ');
 	}
 	
 	else
@@ -1031,6 +1069,7 @@ jsdbg.compileAcornStmt = function (node) {
 };
 
 jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) { 
+	var z = 100000;
 		
 	if(node.type == "CallExpression") 
 	{
@@ -1057,8 +1096,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		// эмулируем Function.prototype.apply()
 		if(func_frag[0].match(/\.apply$/)) {
 			this.code.push(' ctx.__next_step('+
-				(node.start*10000+node.end)+');\n\t\tcase '+
-				(node.start*10000+node.end)+': t['+this.tmp+'] = ('+
+				(node.start*z+node.end)+');\n\t\tcase '+
+				(node.start*z+node.end)+': t['+this.tmp+'] = ('+
 				func_frag[0]+' instanceof Function) ? ctx.__func_apply('+
 				func_frag[0].replace(/\.apply$/, '') +
 				', ' + args[0] + ', ' + args[1] + ') : ctx.__func_call('+
@@ -1068,15 +1107,15 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		}
 		else if(func_frag[0] == 'jsdbg') {
 			this.code.push(' ctx.__next_step('+
-				(node.start*10000+node.end)+');\n\t\tcase '+
-				(node.start*10000+node.end)+': t['+this.tmp+'] = ctx.__func_call(' +
+				(node.start*z+node.end)+');\n\t\tcase '+
+				(node.start*z+node.end)+': t['+this.tmp+'] = ctx.__func_call(' +
 				args.join(', ') + ');');
 		}
 		// простой шаг вызова функции
 		else 
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = '+
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = '+
 			'ctx.__func_call('+
 			func_frag[0] + ', ' + func_frag[1] + (args.length?', ':'') +
 			args.join(', ') +
@@ -1118,8 +1157,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		
 		// в любом случае это шаг и результат во временной переменной будет
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':'+code_line);
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':'+code_line);
 		
 // 				if (is_subexpression) {
 			return 't['+this.tmp+']';
@@ -1146,8 +1185,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		// либо положем во временную переменную и вернём её
 		else {
 			this.code.push(' ctx.__next_step('+
-				(node.start*10000+node.end)+');\n\t\tcase '+
-				(node.start*10000+node.end)+': t['+this.tmp+'] = '+ code_line+';');
+				(node.start*z+node.end)+');\n\t\tcase '+
+				(node.start*z+node.end)+': t['+this.tmp+'] = '+ code_line+';');
 			return 't['+this.tmp+']';
 		}
 	}
@@ -1158,8 +1197,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			return node.raw;
 			
 		var code_line = ' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = '+node.raw+';';
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = '+node.raw+';';
 		this.code.push(code_line);
 		return 't['+this.tmp+']';
 	}
@@ -1170,8 +1209,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			return 'ctx.this';
 			
 		var code_line = ' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = ctx.this;';
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = ctx.this;';
 		this.code.push(code_line);
 		return 't['+this.tmp+']';
 	}
@@ -1201,8 +1240,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		
 		// возвращаем как шаг и временную переменную
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = '+left+' '+node.operator+' '+right+';');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = '+left+' '+node.operator+' '+right+';');
 		return 't['+this.tmp+']';
 	}
 	
@@ -1216,15 +1255,15 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		var left = this.compileAcornExpr(node.left, false);
 		
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':');
 
 		// условное выполнение
 		if (node.operator == '||') {
-			this.code.push(' if('+left+') { t['+old_tmp+'] = '+left+'; ctx.__next_step('+(node.end*10000+node.start)+'); break; }');
+			this.code.push(' if('+left+') { t['+old_tmp+'] = '+left+'; ctx.__next_step('+(node.end*z+node.start)+'); break; }');
 		}
 		else if (node.operator == '&&') {
-			this.code.push(' if(!('+left+')) { t['+old_tmp+'] = false; ctx.__next_step('+(node.end*10000+node.start)+'); break; }');
+			this.code.push(' if(!('+left+')) { t['+old_tmp+'] = false; ctx.__next_step('+(node.end*z+node.start)+'); break; }');
 		}
 		
 		// вычислим правую часть
@@ -1235,7 +1274,7 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		
 		// перевёрнутая метка (перевёртыш)
 		this.code.push('\n\t\tcase '+
-			(node.end*10000+node.start)+':');
+			(node.end*z+node.start)+':');
 			
 		return 't['+old_tmp+']';
 	}
@@ -1250,8 +1289,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 				: (node.operator+code_frag);
 		
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':');
 			
 		// ++a, --a
 		if (node.prefix) {
@@ -1285,8 +1324,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		
 		// иначе верёнм как шаг и временную переменную
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = ['+code_line+'];');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = ['+code_line+'];');
 		return 't['+this.tmp+']';
 	}
 	
@@ -1308,8 +1347,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		this.tmp = old_tmp;
 		
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = {'+code_line.join(', ')+'}; ');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = {'+code_line.join(', ')+'}; ');
 		return 't['+this.tmp+']';
 	}
 	
@@ -1330,15 +1369,17 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			return left+' '+node.operator+' '+right;
 		}
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': '+left+' '+node.operator+' '+right+';');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': '+left+' '+node.operator+' '+right+';');
 		return left;
 	}
 	
 	else if(node.type == "MemberExpression") 
 	{
-		// метод вызывают у числа
-		if (node.object.type == "Literal" && typeof node.object.value == 'number')
+		// метод вызывают у числа?
+		if (node.object.type == "Literal" && typeof node.object.value == 'number'
+		// для случая (Date()+'').replace(...)
+		|| node.object.type == 'BinaryExpression')
 			var this_frag = this.compileAcornExpr(node.object, false);
 		else
 			var this_frag = this.compileAcornExpr(node.object, true);
@@ -1363,8 +1404,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			return code_frag;
 		
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': t['+this.tmp+'] = '+code_frag+';');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': t['+this.tmp+'] = '+code_frag+';');
 
 		return 't['+this.tmp+']';
 	}
@@ -1383,8 +1424,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			
 			// выделим заголовок функции
 			this.code.push(' ctx.__next_step('+
-				((node.start+node.id.end)*10000+node_end)+');\n\t\tcase '+
-				((node.start+node.id.end)*10000+node_end)+':');
+				((node.start+node.id.end)*z+node_end)+');\n\t\tcase '+
+				((node.start+node.id.end)*z+node_end)+':');
 		}
 		else {
 			var func_name = this.func_name[this.func_name.length-1]+'-func'+node.start;
@@ -1393,8 +1434,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 			
 			// выделим заголовок функции
 			this.code.push(' ctx.__next_step('+
-				((node.start+8)*10000+node_end)+');\n\t\tcase '+
-				((node.start+8)*10000+node_end)+':');
+				((node.start+8)*z+node_end)+');\n\t\tcase '+
+				((node.start+8)*z+node_end)+':');
 		}
 		
 		//this.code.push(' var parent_ctx = ctx; ');
@@ -1472,12 +1513,19 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 
 		// if
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+': if(!('+tmp_test+')) ');
-		if (node.alternate)
-			this.code.push('{ ctx.__next_step('+(node.alternate.start*10000+node.alternate.end)+'); break; }'); // идём на alternate
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+': if(!('+tmp_test+')) ');
+		if (node.alternate) {
+			// TODO А если комментарии?
+			for(var else_start = node.alternate.start; else_start >= node.start; else_start--) {
+				if(this.src[else_start] != ':') continue;
+				node.alternate.elseStart = else_start;
+				break;
+			}
+			this.code.push('{ ctx.__next_step('+((node.alternate.elseStart||node.alternate.start)*z+node.alternate.end)+'); break; }'); // идём на alternate
+		}
 		else
-			this.code.push('{ ctx.__next_step('+(node.end*10000+node.start)+'); break; }'); // идём на перевёрнутый
+			this.code.push('{ ctx.__next_step('+(node.end*z+node.start)+'); break; }'); // идём на перевёрнутый
 
 		// if-true (consequent)
 		this.code.push(' t['+result_tmp+'] = '+ this.compileAcornExpr(node.consequent, true)+';');
@@ -1487,12 +1535,15 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		if (node.alternate)
 		{
 			// пусть идёт на перевёрнутый (перепрыгивает блок ниже)
-			this.code.push(' ctx.__next_step('+(node.end*10000+node.start)+'); break;');
+			this.code.push(' ctx.__next_step('+(node.end*z+node.start)+'); break;');
+			
+			if(node.alternate.elseStart)
+				this.code.push('\n\t\tcase '+(node.alternate.elseStart*z+node.alternate.end)+': ');
 
 			// надо будет проверить сгенерировался case для node.alternate?
 			var ternary_if_false_body_start = this.code.length;
 			var ternary_if_false_body_result = this.compileAcornExpr(node.alternate, true);
-			var case_alternate_fragment = 'case '+(node.alternate.start*10000+node.alternate.end)+':';
+			var case_alternate_fragment = 'case '+(node.alternate.start*z+node.alternate.end)+':';
 			for(var i=ternary_if_false_body_start; i<this.code.length;i++)
 				if(this.code[i].indexOf(case_alternate_fragment)>-1) {
 					case_alternate_fragment = null; // уже вставлен
@@ -1508,8 +1559,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 
 		// перевёрнутый
 		this.code.push(' ctx.__next_step('+
-			(node.end*10000+node.start)+');\n\t\tcase '+
-			(node.end*10000+node.start)+':');
+			(node.end*z+node.start)+');\n\t\tcase '+
+			(node.end*z+node.start)+':');
 
 		return 't['+result_tmp+']';
 	}
@@ -1519,8 +1570,8 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		var code = this.compileAcornExpr(node.argument, true);
 		
 		this.code.push(' ctx.__next_step('+
-			(node.start*10000+node.end)+');\n\t\tcase '+
-			(node.start*10000+node.end)+':');
+			(node.start*z+node.end)+');\n\t\tcase '+
+			(node.start*z+node.end)+':');
 		
 		if (is_subexpression)
 			return node.operator+' '+code;
@@ -1555,7 +1606,7 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 			func.__jsdbg_compiled = 2; // native code
 			return false;
 		}
-
+		
 		// acorn не любит пустые функции/методы
 		if(src.match(/function\s*\([^)]*\)\s*{\s*}/)) {
 			// return src;
@@ -1563,6 +1614,22 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 		}
 		
 		var ast = acorn.parse(src, {ecmaVersion: 'latest'});
+		
+		// попросили не компилировать
+		if(ast.body && ast.body[0] && ast.body[0].body && ast.body[0].body.body 
+		&& ast.body[0].body.body[0] 
+		&& (ast.body[0].body.body[0].directive||'').match(/jsdbg: *no_compile/)) 
+		{
+			// jsdbg.stepIn() попросил всё-же скопилировать эту функцию
+			if(func.__jsdbg_compiled == 4) 
+				delete func.__jsdbg_compiled;
+				
+			// отмечаем, что скомпилированный, но по директиве
+			else {
+				func.__jsdbg_compiled = 3;
+				return false;
+			}
+		}
 
 		// подсунем свой scope если передали
 		if(ast.body.length && ast.body[0].type == 'FunctionDeclaration' && custom_scope) {
@@ -1571,8 +1638,13 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 		
 		// TODO методы классов часто бывают без имени
 
+		// перекомпиляция или первая компиляция?
+		if(func.hasOwnProperty('__jsdbg_id'))
+			var new_id = func.__jsdbg_id;
+		else
+			var new_id = jsdbg.next_id++;
+
 		/* Начинаем компиляцию */
-		var new_id = func.__jsdbg_id || jsdbg.next_id++; // перекомпиляция или первая компиляция?
 		this.src = src;
 		this.code = [];
 		this.tmp = 0; // текущая свободная временная переменная
@@ -1605,17 +1677,17 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 			// перебираем торки останова
 			var brk_list = func.__jsdbg_breakpoints;
 			for(var i=0; i<brk_list.length; i++) {
-				var best_ip = [0, 10000];
+				var best_ip = [0, 100000];
 			
 				// перебираем шаги в алгоритме
 				for(var ii=0; ii<(next_steps||[]).length; ii++) 
 				{
 					var ip = parseInt(next_steps[ii].substring(12));
-					var ip_start = Math.floor(ip / 10000);
-					var ip_end = ip % 10000;
+					var ip_start = Math.floor(ip / 100000);
+					var ip_end = ip % 100000;
 				
 					// он лучше чем предыдущий?
-					if(brk_list[i] > ip_start && brk_list[i] < ip_end
+					if(brk_list[i] >= ip_start && brk_list[i] <= ip_end
 					&& best_ip[1] > ip_end - ip_start)
 						best_ip = [ip, ip_end - ip_start];
 				}
@@ -1712,7 +1784,14 @@ jsdbg.stepIn = function () {
 
 	try {
 		jsdbg.step_limit = 1;
-		if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+		/* if(jsdbg.ctx.__callee.__jsdbg_compiled == 3) // no_compile
+		{
+			jsdbg.ctx.__callee.__jsdbg_compiled = 4;
+			jsdbg.compileFunc(jsdbg.ctx.__callee, jsdbg.ctx.this);
+			jsdbg.ctx.__func_id = jsdbg.ctx.__callee.__jsdbg_id
+		}*/
+			
+		if(jsdbg.ctx.__func_id && jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
 			jsdbg.compiled[jsdbg.ctx.__func_id]();
 		else
 			jsdbg.ctx.__callee();
@@ -1775,7 +1854,8 @@ jsdbg.continue = function () {
 	// продолжим выполнение
 	try {
 		jsdbg.step_limit = 55222333;
-		if(jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
+		if(jsdbg.ctx.__func_id 
+		&& jsdbg.ctx.__func_id == jsdbg.ctx.__callee.__jsdbg_id)
 			jsdbg.compiled[jsdbg.ctx.__func_id]();
 		else
 			jsdbg.ctx.__callee();
@@ -1855,7 +1935,9 @@ jsdbg.startDebug = function (src, _this, _arguments) {
 	
 	try {
 		var args = _arguments || [];
-		if(func.__jsdbg_parent_id)
+		if(func.__jsdbg_compiled == 3 /* no_compile directive */)
+			return func.apply(_this||window, args);
+		else if(func.__jsdbg_parent_id)
 			func.apply(_this||window, args);
 		else
 			jsdbg.compiled[func.__jsdbg_id].apply(_this||window, args);

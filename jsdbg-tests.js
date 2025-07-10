@@ -436,6 +436,21 @@ function test3l(arg1) {
 test3l.__arguments = [function(struct){ return struct.one.onclick(); }];
 test3l.__expect = 'one';
 
+function test3m(message) {
+	return (new Date(message.date)+'').replace(/[a-zA-Z]+ [a-zA-Z]+ [0-9]+ 20[0-9]+ (..:..).*/, '$1');
+}
+test3m.__arguments = [{date: '2025-05-15T16:01:02+00:00'}];
+test3m.__expect = (new Date('2025-05-15T16:01:02+00:00')+'').replace(/[a-zA-Z]+ [a-zA-Z]+ [0-9]+ 20[0-9]+ (..:..).*/, '$1');
+
+function test3n(message, now, html) {
+	html.push('<small class="msg__datetime">'+(message.date.substring(0, 10) == now
+		? (new Date(message.date)+'').replace(/[a-zA-Z]+ [a-zA-Z]+ [0-9]+ 20[0-9]+ (..:..).*/, '$1')
+		: (new Date(message.date)+'').replace(/[a-zA-Z]+ ([a-zA-Z]+ [0-9]+) 20[0-9]+ (..:..).*/, '$2, $1'))+'</small>');
+	return html;
+}
+test3n.__arguments = [{date: '2025-05-15T16:01:02+00:00'}, '2025-05-15', []];
+test3n.__expect = ['<small class="msg__datetime">'+(new Date('2025-05-15T16:01:02+00:00')+'').replace(/[a-zA-Z]+ [a-zA-Z]+ [0-9]+ 20[0-9]+ (..:..).*/, '$1')+'</small>'];
+
 function test4_try1(arg1) {
 	try {
 		throw '123';
@@ -611,6 +626,30 @@ function test9callback1(arg1) {
 test9callback1.__arguments = [];
 test9callback1.__expect = undefined;
 
+function Test9i() {
+	this.a = 1;
+}
+function Test9ii() {
+	this.a = 2;
+}
+Test9ii.__proto__ = Test9i;
+
+function test9inheritdbl1() {
+	new Test9i();
+	return new Test9ii();
+}
+test9inheritdbl1.__arguments = [];
+test9inheritdbl1.__expect = {a:2};
+
+function test9nocompile1() {
+	/* 123 */
+	"jsdbg: no_compile"
+	'use strict'
+	return 123;
+}
+test9nocompile1.__arguments = [];
+test9nocompile1.__expect = 123;
+
 /* ========================= */
 function jsdbg_test_all() {
 	document.getElementById('test_zone').innerHTML = '';
@@ -669,6 +708,8 @@ function jsdbg_test_all() {
 	jsdbg_test('test3j');
 	jsdbg_test('test3k');
 	jsdbg_test('test3l');
+	jsdbg_test('test3m');
+	jsdbg_test('test3n');
 	
 	jsdbg_test('test4_try1');
 	jsdbg_test('test4_forin1');
@@ -690,6 +731,8 @@ function jsdbg_test_all() {
 	jsdbg_test('test9dbg1');
 	jsdbg_test('test9callback1');
 	jsdbg_test('test9inspect1');
+	jsdbg_test('test9inheritdbl1');
+	jsdbg_test('test9nocompile1');
 }
 
 function jsdbg_test(func_name, verbose, event) 
@@ -729,7 +772,7 @@ function jsdbg_test(func_name, verbose, event)
 	
 	// запустим тест
 	var result;
-	if (window[func_name].__jsdbg_id)
+	if (window[func_name].__jsdbg_id || window[func_name].__jsdbg_compiled)
 	try {
 		// защита от опечатки
 		if('__arguments' in window[func_name] == false) 
@@ -803,6 +846,13 @@ function jsdbg_test(func_name, verbose, event)
 		console.log(func_name, result, window[func_name].__expect, test_ok);
 	}
 	
+	if(func_name == 'test9nocompile1') {
+		if(window[func_name].__jsdbg_compiled != 3) {
+			test_ok = false;
+			result = 'test9nocompile1.__jsdbg_compiled != 3';
+		}
+	}
+
 	if (test_ok) 
 	{
 		if(test_zone.innerHTML.indexOf(func_name) > 0)
