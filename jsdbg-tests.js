@@ -487,6 +487,19 @@ function test4_forin3(arg1) {
 test4_forin3.__arguments = [{aaa: 1, bbb: 2, ccc: 3}];
 test4_forin3.__expect = 'ccc';
 
+function test4_for4(arg1) {
+	//var prt_cnt = 10;
+	for(var i=0; i < arg1.length;) {
+		if(arg1[i] == 1) { i++; continue; }
+		arg1[i] = 1;
+		//if(prt_cnt-- == 0) return 'Infinity loop?!';
+	}
+
+	return arg1;
+}
+test4_for4.__arguments = [[0,0,1,0]];
+test4_for4.__expect = [1,1,1,1];
+
 function test9_func1(arg1) {
 	var func = function(){
 		return arg1;
@@ -532,7 +545,7 @@ function test9_func5() {
 	return tmp.a();
 }
 test9_func5.__arguments = [];
-test9_func5.__expect = undefined;
+test9_func5.__expect = 123;
 
 function test9_func6() {
 	var tmp = {x: function(){
@@ -650,6 +663,35 @@ function test9nocompile1() {
 test9nocompile1.__arguments = [];
 test9nocompile1.__expect = 123;
 
+function test9apply1(arg1, arg2) {
+	return arg1.meth1.apply(arg2, [123]);
+}
+test9apply1.meth1 = function(number){ return this.a + number; };
+test9apply1.__arguments = [test9apply1, {a:321}];
+test9apply1.__expect = 444;
+
+
+function test9_prototype() {
+	this.a = 123;
+}
+test9_prototype.prototype.meth1 = function(){
+	var tmp = function(b){ return this.a + b; };
+	return tmp;
+};
+var test9_obj = new test9_prototype();
+
+function test9callback2() {
+
+	// вызываем её, на всякий случай
+	test9_obj.meth1();
+
+	return test9_obj.meth1()(1);
+}
+// test9callback2.obj = new test9_prototype();
+test9callback2.__arguments = [];
+window.a = 333;
+test9callback2.__expect = 334;
+
 /* ========================= */
 function jsdbg_test_all() {
 	document.getElementById('test_zone').innerHTML = '';
@@ -715,6 +757,7 @@ function jsdbg_test_all() {
 	jsdbg_test('test4_forin1');
 	jsdbg_test('test4_forin2');
 	jsdbg_test('test4_forin3');
+	jsdbg_test('test4_for4');
 	
 	jsdbg_test('test9_func1');
 	jsdbg_test('test9_func2');
@@ -729,10 +772,13 @@ function jsdbg_test_all() {
 	jsdbg_test('test9c');
 	jsdbg_test('test9c2');
 	jsdbg_test('test9dbg1');
-	jsdbg_test('test9callback1');
 	jsdbg_test('test9inspect1');
 	jsdbg_test('test9inheritdbl1');
 	jsdbg_test('test9nocompile1');
+	jsdbg_test('test9apply1');
+	jsdbg_test('test9callback1');
+	jsdbg_test('test9callback2');
+	// jsdbg_test('test9callback2b');
 }
 
 function jsdbg_test(func_name, verbose, event) 

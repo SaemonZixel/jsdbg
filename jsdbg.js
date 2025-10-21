@@ -406,11 +406,11 @@ this.arguments[17]);
 	jsdbg.step_limit = old_step_limit;
 };
 
-Ctx.prototype.__func_apply = function (func_, this_, arguments_) { 
+Ctx.prototype.__func_apply = function (func_, meth_dict, this_, arguments_) { 
 	
 		// компилируем функцию если надо
 		if( ! func_.__jsdbg_compiled && ! func_.__jsdbg_id)
-			jsdbg.compileFunc(func_, this_);
+			jsdbg.compileFunc(func_, meth_dict);
 		
 		// создаём новый контекст для вызываемой функции/метода
 		if(!this.hasOwnProperty('__down') || !this.__down) {
@@ -557,6 +557,9 @@ jsdbg.compileAcornStmt = function (node) {
 //		this.code.push('\n\tif(ctx.__ip == 0) {');
 			
 //		this.code.push('\n\t}');
+
+		// актуализируем this
+		//this.code.push(' ctx.this = this;');
 			
 		// body
 		this.code.push('\n\tfor(var _prt_cnt=111222;_prt_cnt;_prt_cnt--) try{ switch(ctx.__ip){');
@@ -671,7 +674,7 @@ jsdbg.compileAcornStmt = function (node) {
 	{
 		code.push(' ctx.__next_step('+
 		(node.start*z+node.end)+');\n\t\tcase '+(node.start*z+node.end)+': ctx.__next_step('+
-		this.continue_ip+'); break;');
+		this.continue_ip+'); break; /* continue */');
 	}
 	
 	else if(node.type == "ExpressionStatement") {
@@ -877,26 +880,29 @@ jsdbg.compileAcornStmt = function (node) {
 		this.code.push('\n\t\t\tif(!t['+this.tmp+']) ');
 		this.code.push('{ ctx.__next_step('+ (node.end*z+node.start)+ '); break; }'); 
 		
+		// для надёжности сразу разберёмся с for-update и проставим continue_ip если надо
+		if(!node.update) {
+			var update_separator = this.src.indexOf(')', node.test.end+1);
+			if(update_separator == -1) debugger;
+			node.update = {type: "EmptyStatement", start: update_separator, end: update_separator+1, declarations: []};
+				
+			this.continue_ip = node.update.start*z+node.update.end;
+		}
+		
 		// for-body
 		this.compileAcornStmt(node.body);
 
 		// for-update
-		if(!node.update) {
-			var update_separator = this.src.indexOf(')', node.test.end+1);
-			if(update_separator == -1) debugger;
-			node.update = {start: update_separator, end: update_separator+1, declarations: []};
-			
+		if(node.update.type == "EmptyStatement") {
 			this.code.push('ctx.__next_step('+
 				(node.update.start*z+node.update.end)+');\n\t\tcase '+
 				(node.update.start*z+node.update.end)+':');
-				
-			this.continue_ip = node.update.start*z+node.update.end;
 		}
 		else
 			this.compileAcornStmt(node.update);
 		
 		// назад к for-test
-		this.code.push(' ctx.__next_step('+if_test_ip+'); break;');
+		this.code.push(' ctx.__next_step('+if_test_ip+'); break; /* to for-test */');
 		
 		// for-end перевёртыш
 		this.code.push('\n\t\tcase '+(node.end*z+node.start)+':');
@@ -1100,7 +1106,9 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 				(node.start*z+node.end)+': t['+this.tmp+'] = ('+
 				func_frag[0]+' instanceof Function) ? ctx.__func_apply('+
 				func_frag[0].replace(/\.apply$/, '') +
-				', ' + args[0] + ', ' + args[1] + ') : ctx.__func_call('+
+				', ' + (func_frag[0].replace(/\.apply$/, '').replace(/\.[_0-9a-zA-Z]+$/, '')||'window') + 
+				', ' + args[0] + 
+				', ' + args[1] + ') : ctx.__func_call('+
 				func_frag[0] + ', ' + func_frag[1] + (args.length?', ':'') +
 				args.join(', ') +
 				');');
@@ -1462,6 +1470,9 @@ jsdbg.compileAcornExpr = function (node, is_subexpression, with_this) {
 		this.parent_ctx_name = 'parent_ctx_'+func_name.replace(/-/g, '_');
 		this.code.push(' var '+this.parent_ctx_name+' = ctx;');
 		
+		// актуализируем this
+		this.code.push(' ctx.this = this;');
+		
 		// при многократном вызове, надо сбрасывать указатель операции
 		//this.code.push('\n\tif(ctx.__ip == -1) ctx.__ip = 0;');
 		
@@ -1676,7 +1687,7 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 			
 			// перебираем торки останова
 			var brk_list = func.__jsdbg_breakpoints;
-			for(var i=0; i<brk_list.length; i++) {
+			for(var brk_pos in brk_list) {
 				var best_ip = [0, 100000];
 			
 				// перебираем шаги в алгоритме
@@ -1687,7 +1698,7 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 					var ip_end = ip % 100000;
 				
 					// он лучше чем предыдущий?
-					if(brk_list[i] >= ip_start && brk_list[i] <= ip_end
+					if(brk_pos >= ip_start && brk_pos <= ip_end
 					&& best_ip[1] > ip_end - ip_start)
 						best_ip = [ip, ip_end - ip_start];
 				}
@@ -1699,7 +1710,10 @@ jsdbg.compileFunc = function (func, this_, custom_scope) {
 				}
 				
 				// заменяем в коде
-				compiled_src = compiled_src.replace(new RegExp('__next_step\\('+best_ip[0]+'[^)]*\\)', 'g'), '__next_step('+best_ip[0]+', 1)');
+				compiled_src = compiled_src.replace(new RegExp(
+					'__next_step\\('+best_ip[0]+'[^)]*\\)', 'g'), 
+					'__next_step('+best_ip[0]+', '+(brk_list[brk_pos]===true ? 'true' : jsdbg.compileBreakpointFunc(brk_list[brk_pos]))+')'
+				);
 			}
 		}
 		
@@ -2038,6 +2052,113 @@ jsdbg.continueToIp = function (destination_ip) {
 
 	if(jsdbg.ctx) jsdbg.old_ctx = jsdbg.ctx;
 	delete jsdbg.ctx;
+};
+
+jsdbg.compileBreakpointFunc = function (expr, node, result) { 
+	
+	// рекурсивный анализ AST-дерева
+	if(node) 
+	{
+		// BinaryExpression, LogicalExpression
+		if(node.left && node.left instanceof acorn.Node) {
+			if(node.left.type == 'Identifier' && node.left.name) {
+				if(result.indexOf(node.left.name) == -1)
+					result.push(node.left.name);
+			}
+			else
+				jsdbg.compileBreakpointFunc(expr, node.left, result);
+		}
+		if(node.right && node.right instanceof acorn.Node) {
+			if(node.right.type == 'Identifier' && node.right.name) {
+				if(result.indexOf(node.right.name) == -1)
+					result.push(node.right.name);
+			}
+			else
+				jsdbg.compileBreakpointFunc(expr, node.right, result);
+		}
+		
+		// MemberExpression
+		if(node.object && node.object.name) {
+			if(result.indexOf(node.object.name) == -1)
+				result.push(node.object.name);
+		}
+		else if(node.object) {
+			jsdbg.compileBreakpointFunc(expr, node.object, result);
+		}
+		
+		// ThisExpression
+		if(node.type == "ThisExpression") {
+			if(result.indexOf('this') == -1)
+				result.push('this');
+		}
+		
+		// CallExpression
+		if(node.callee) {
+			if(node.callee.type == 'Identifier' && nnode.callee.name) {
+				if(result.indexOf(node.callee.name) == -1)
+					result.push(node.callee.name);
+			}
+			else
+				jsdbg.compileBreakpointFunc(expr, node.callee, result);
+		}
+		
+		// UpdateExpression, UnaryExpression
+		if(node.argument) {
+			if(node.argument.type == 'Identifier' && nnode.argument.name) {
+				if(result.indexOf(node.argument.name) == -1)
+					result.push(node.argument.name);
+			}
+			else
+				jsdbg.compileBreakpointFunc(expr, node.argument, result);
+		}
+		
+		// ConditionalExpression
+		if(node.test) {
+			if(node.test.type == 'Identifier' && node.test.name) {
+				if(result.indexOf(node.test.name) == -1)
+					result.push(node.test.name);
+			}
+			else
+				jsdbg.compileBreakpointFunc(expr, node.test, result);
+		}
+		if(node.alternate)
+			jsdbg.compileBreakpointFunc(expr, node.alternate, result);
+		if(node.consequent)
+			jsdbg.compileBreakpointFunc(expr, node.consequent, result);
+		
+		// SequenceExpression
+		if(node.expressions) 
+		for(var i=node.expressions.length; i>=0; i--){
+			if(node.expressions[i].type == 'Identifier' && node.expressions[i].name) {
+				if(result.indexOf(node.expressions[i].name) == -1)
+					result.push(node.expressions[i].name);
+			}
+			else
+				jsdbg.compileBreakpointFunc(expr, node.expressions[i], result);
+		}
+		
+		// FunctionExpression
+		if(node.type == "FunctionExpression")
+		for(var i=node.params.length-1; i>=0; i--) 
+		{
+			if(result.indexOf(node.params[i].name) == -1)
+				result.push(node.params[i].name);
+		}
+		
+		return;
+	}
+	
+	// разбираем вырожение
+	var ast = acorn.parseExpressionAt(expr, 0, {ecmaVersion: 2020});
+	
+	// обходим дерево
+	var result = [];
+	jsdbg.compileBreakpointFunc(expr, ast, result);
+	
+	if(result.length)
+		return '(function('+result.join(',')+'){ return '+expr+'; })(ctx.'+result.join(', ctx.')+')';
+	else
+		return '(function(){ return '+expr+'; })()';
 };
 
 jsdbg.prototype.test1 = function () {
